@@ -77,10 +77,7 @@ double get_collector_height(const double &p, const data_struct &s_data)
 {
   
     
-  //const double g = s_data.distance_emitter_collector;
-
   double collector_length = s_data.geometrical_parameters.chord_length;
-  //const double x = (p-g)/collector_length;
   const double x = p/collector_length;
 	double y = 0;
 
@@ -106,7 +103,7 @@ class CollectorGeometry : public ChartManifold<dim, dim, dim-1>     //ChartManif
 public:
   virtual Point<dim-1> pull_back(const Point<dim> &space_point) const override;        //Pull back the given point in spacedim to the Euclidean chartdim dimensional space
 
-  virtual Point<dim> push_forward(const Point<dim-1> &chart_point) const override;     //Given a point in the chartdim dimensional Euclidean space, this method returns a point on the manifold embedded in the spacedim Euclidean space.
+  // virtual Point<dim> push_forward(const Point<dim-1> &chart_point) const override;     //serve?
   Point<dim> push_forward(const Point<dim-1> &chart_point, const data_struct& s_data) const; 
   
   virtual std::unique_ptr<Manifold<dim, dim>> clone() const override;                  //Return a copy of this manifold
@@ -119,7 +116,7 @@ std::unique_ptr<Manifold<dim, dim>> CollectorGeometry<dim>::clone() const
 return std::make_unique<CollectorGeometry<dim>>();
   }
 
-
+/*
 template <int dim>
 Point<dim> CollectorGeometry<dim>::push_forward(const Point<dim-1>  &x) const          //Input: a chart point that in our case is a 1D point 
 {
@@ -133,7 +130,7 @@ Point<dim> CollectorGeometry<dim>::push_forward(const Point<dim-1>  &x) const   
   // }
 
   return p;                                                                              //Output: a point of our collector in 2D 
-}
+}*/
 
 template <int dim>
 Point<dim> CollectorGeometry<dim>::push_forward(const Point<dim-1>  &x, const data_struct& s_data) const          //Input: a chart point that in our case is a 1D point 
@@ -165,10 +162,9 @@ Point<dim-1>  CollectorGeometry<dim>::pull_back(const Point<dim> &p) const      
 }  
 // Collector Manifold - END
 
- 
-// MODIFICARE QUA 
+  
 
- void create_triangulation(parallel::distributed::Triangulation<2> &tria, const data_struct& s_data, unsigned short int i)
+void create_triangulation(parallel::distributed::Triangulation<2> &tria, const data_struct& s_data, unsigned short int i)
 { 
   if(s_data.simulation_specification.ID_simulation <=2){ //NACA NS 
 
@@ -177,30 +173,26 @@ Point<dim-1>  CollectorGeometry<dim>::pull_back(const Point<dim> &p) const      
         std::cout <<"Reading the mesh from " << filename << std::endl;
         std::ifstream input_file(filename);
         GridIn<2>       grid_in;
-        grid_in.attach_triangulation(tria);            //Attach this triangulation to be fed with the grid data
-        grid_in.read_msh(input_file);                           //Read grid data from an msh file
+        grid_in.attach_triangulation(tria);           
+        grid_in.read_msh(input_file);                 
 
-        const types::manifold_id emitter = 1;                   //The type used to denote manifold indicators associated with every object of the mesh
+        const types::manifold_id emitter = 1;        
+       
+        const double distance_emitter_collector = s_data.geometrical_parameters.distance_emitter_collector;
+        const double r_emi = s_data.geometrical_parameters.emitter_radius[i];
+        double X = -distance_emitter_collector - r_emi; 
+        const Point<2> center(X,0.0);
+        SphericalManifold<2> emitter_manifold(center);
 
-        /*const double re = s_data.radius_emitter ; // [m] emitter radius                                 
-        const double g = s_data.distance_emitter_collector; // [m] interelectrode distance
-        const double X = -re-g; // [m] emitter center */
+        const types::manifold_id collector = 2;
+
+        CollectorGeometry<2> collector_manifold;
+
 
         // for wire wire simulation
         // double r_col = 1e-3;
         // double r_emi = 30e-5;
         // double dist_emi_col = 0.025;
-        // const double X = -r_emi-dist_emi_col;
-        const double distance_emitter_collector = s_data.geometrical_parameters.distance_emitter_collector;
-        const double r_emi = s_data.geometrical_parameters.emitter_radius[i];
-        // for naca simulation
-        double X = -distance_emitter_collector - r_emi;
-
-        const Point<2> center(X,0.0);
-        SphericalManifold<2> emitter_manifold(center);
-
-        const types::manifold_id collector = 2;
-        CollectorGeometry<2> collector_manifold; 
         // const Point<2> center2(r_col,0.0);
         // SphericalManifold<2> collector_manifold(center2);               
 
