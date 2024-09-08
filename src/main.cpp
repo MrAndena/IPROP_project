@@ -65,7 +65,7 @@ int main(int argc, char** argv){
                 
                                         parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
 
-                                        create_triangulation(tria, my_data,i);
+                                        create_triangulation(tria, my_data, i);
 
                                         InsIMEX<2> flow(tria, my_data.navier_stokes, i);
 
@@ -105,6 +105,50 @@ int main(int argc, char** argv){
                 
 
                 case 2:{ // NS-DD on naca profile
+
+                        MPI_Barrier(MPI_COMM_WORLD); // Needed in order to wait rank zero !!
+
+                        for(unsigned short int i=0; i<number_of_simulations;++i){
+                        
+                                        //code for the simulation
+                                        try
+                                        {
+                
+                                        parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
+
+                                        create_triangulation(tria, my_data, i);
+
+                                        Complete_problem<2> problem(tria, my_data.??, i);
+
+                                        problem.run();
+                                        }
+                                        catch (std::exception &exc)
+                                        {
+                                        std::cerr << std::endl
+                                                << std::endl
+                                                << "----------------------------------------------------"
+                                                << std::endl;
+                                        std::cerr << "Exception on processing: " << std::endl
+                                                << exc.what() << std::endl
+                                                << "Aborting!" << std::endl
+                                                << "----------------------------------------------------"
+                                                << std::endl;
+                                        return 1;
+                                        }
+                                        catch (...)
+                                        {
+                                        std::cerr << std::endl
+                                                << std::endl
+                                                << "----------------------------------------------------"
+                                                << std::endl;    
+                                        std::cerr << "Unknown exception!" << std::endl
+                                                << "Aborting!" << std::endl
+                                                << "----------------------------------------------------"
+                                                << std::endl;
+                                        return 1;
+                                        }
+                        }
+
                 
                         break;
                 }

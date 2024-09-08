@@ -44,12 +44,12 @@
 using namespace dealii;
 
 template <int dim>
-class CompleateProblem
+class CompleteProblem
 {
 
 public:
 
-    CompleateProblem(parallel::distributed::Triangulation<dim> &tria, const data_struct &d,unsigned short int i);
+    CompleteProblem(parallel::distributed::Triangulation<dim> &tria, const data_struct &d,unsigned short int i);
 
     void run(); // ha senso mettere toleranze qua ?
 
@@ -69,10 +69,10 @@ private:
     void solve_drift_diffusion();
     void perform_drift_diffusion_fixed_point_iteration_step(); // vedere a che serve
 
-    void setup_navier_stokes();
-    void assemble_navier_stokes(const bool nonzero_constraints);
-    void solve_nonlinear_navier_stokes_step(const bool nonzero_constraints);
-    void navier_stokes_newton_iteration( const double tolerance,const unsigned int max_n_line_searches);
+    
+    void CompleteProblem<dim>::setup_NS();
+    void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints, bool assemble_system);
+    std::pair<unsigned int, double> CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step);
     void solve_navier_stokes();
     void estimate_thrust();
 
@@ -153,8 +153,8 @@ private:
 
     FESystem<dim>    NS_fe;
     DoFHandler<dim>  NS_dof_handler;
-    QGauss<dim> volume_quad_formula;   // non cera nell'originale compleate problem
-    QGauss<dim - 1> face_quad_formula; // non cera nell'originale complrate problem
+    QGauss<dim> volume_quad_formula;   // non cera nell'originale complete problem
+    QGauss<dim - 1> face_quad_formula; // non cera nell'originale complete problem
     
     // Constraints
     AffineConstraints<double> zero_NS_constraints;
@@ -162,17 +162,20 @@ private:
     
     // Matrices
     BlockSparsityPattern      NS_sparsity_pattern;
-    PETScWrappers::MPI::BlockSparseMatrix NS_system_matrix;
-    PETScWrappers::MPI::SparseMatrix      pressure_mass_matrix;
+    PETScWrappers::MPI::BlockSparseMatrix  NS_system_matrix;
+    PETScWrappers::MPI::BlockSparseMatrix  pressure_mass_matrix;
+    PETScWrappers::MPI::BlockSparseMatrix  NS_mass_matrix;
     
     // BlockVectors
     PETScWrappers::MPI::BlockVector NS_solution;
     PETScWrappers::MPI::BlockVector NS_newton_update; // perchè c'è newton qui?
+    PETScWrappers::MPI::BlockVector NS_solution_update;
     PETScWrappers::MPI::BlockVector NS_system_rhs;
     
-    std::shared_ptr<BlockSchurPreconditioner> preconditioner; // non cera nell'originale compleate problem
-    std::vector<IndexSet> owned_partitioning;                //  non cera nell'originale compleate problem
-    std::vector<IndexSet> relevant_partitioning;             // non cera nell'originale compleate problem
+    std::shared_ptr<BlockSchurPreconditioner> preconditioner; // non c'era nell'originale complete problem
+    std::vector<IndexSet> owned_partitioning;                //  non c'era nell'originale complete problem
+    std::vector<IndexSet> relevant_partitioning;             // non c'era nell'originale complete problem
+
     
     // Step and Timestep
     unsigned int step_number = 0;
@@ -194,7 +197,7 @@ FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, c
 Tensor<1,2> get_emitter_normal(const Point<2> a) ;
 
 
-#include "Compleate_problem_impl.hpp"
+#include "Complete_problem_impl.hpp"
 
 //NB: la struttura del preconditioner blockshur che abbiamo usato nel nostro NS è diversa da quella del problema completo originale
 //    verificare che siano compatibili
