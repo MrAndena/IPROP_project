@@ -2,7 +2,8 @@
   "navier_stokes": {
     "physical_parameters": {
       "viscosity": 0.001,
-      "gamma":0.1
+      "gamma":0.1,
+      "p_over_rho":0.0
     },
     "numerical_parameters": {
       "delta_t": 1e-3,
@@ -20,10 +21,19 @@
       "q0": 1.602e-19,
       "A": 1.0e22,
       "D": 1.0e22,
-      "ni":1.0e16,
-      "V_TH":2.6e-2,
-      "mu_p":1.0e-1,
-      "mu_n":3.0e-2
+      "ni": 1.0e16,
+      "V_TH": 2.6e-2,
+      "kB": 1.381e-23,
+      "mu_p": 1.0e-1,
+      "mu_n": 3.0e-2,
+      "mu0": 1.84e-4,
+      "stratosphere": false,
+      "E_ON": 3.31e+6,
+      "E_ref": 7.0e+7,
+      "N_ref": 1.0e+13,
+      "Mm": 29.0e-3,
+      "Avo": 6.022e+23,
+      "Ve":2.0e+4
     },
     "numerical_parameters": {
       "tolerance": 1.0e-9,

@@ -60,14 +60,14 @@ private:
     void assemble_mass_matrix();
     void assemble_nonlinear_poisson();
     void solve_poisson();
-    void solve_homogeneous_poisson();
-    void solve_nonlinear_poisson(const double tol, const unsigned int max_iterations);
+    void solve_homogeneous_poisson(); // a che serve questa ?
+    void solve_nonlinear_poisson(const unsigned int max_iterations,const double tol);
 
     void setup_drift_diffusion(const bool reinitialize_densities);
     void assemble_drift_diffusion_matrix();
-    void apply_drift_diffusion_boundary_conditions(Vector<double> &solution);
+    void apply_drift_diffusion_boundary_conditions(Vector<double> &solution); // in teoria non serve come in DD
     void solve_drift_diffusion();
-    void perform_drift_diffusion_fixed_point_iteration_step();
+    void perform_drift_diffusion_fixed_point_iteration_step(); // vedere a che serve
 
     void setup_navier_stokes();
     void assemble_navier_stokes(const bool nonzero_constraints);
@@ -77,8 +77,7 @@ private:
     void estimate_thrust();
 
     void evaluate_electric_field();
-    void refine_mesh();
-    void output_results(const unsigned int step);
+    void output_results(const unsigned int step); // preso dal nostro DD dovrebbe funzionare
     
     // Data for the simulation
     data_struct m_data;
@@ -113,12 +112,13 @@ private:
     // Poisson Matrices
     PETScWrappers::MPI::SparseMatrix laplace_matrix_poisson;
     PETScWrappers::MPI::SparseMatrix mass_matrix_poisson;
-    PETScWrappers::MPI::SparseMatrix system_matrix_poisson; //manca la density matrix
+    PETScWrappers::MPI::SparseMatrix density_matrix_poisson;
+    PETScWrappers::MPI::SparseMatrix system_matrix_poisson;
     
     // Drift-Diffusion Matrices
     PETScWrappers::MPI::SparseMatrix ion_system_matrix;
     PETScWrappers::MPI::SparseMatrix ion_mass_matrix;
-    PETScWrappers::MPI::SparseMatrix drift_diffusion_matrix; //NB eliminati entrambi gli sparsity pattern 
+    PETScWrappers::MPI::SparseMatrix drift_diffusion_matrix; 
     
     // Poisson Vectors
     PETScWrappers::MPI::Vector poisson_newton_update;
@@ -189,6 +189,11 @@ double triangle_denom(const Point<2> a, const Point<2> b, const Point<2> c);
 Tensor<1,2> face_normal(const Point<2> a, const Point<2> b);
 FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31, const double D);
 // l'originale era un po diversa perche non dava come input D
+
+// HELPER FUNCTION FOR THRUST COMPUTATION
+Tensor<1,2> get_emitter_normal(const Point<2> a) ;
+
+
 #include "Compleate_problem_impl.hpp"
 
 //NB: la struttura del preconditioner blockshur che abbiamo usato nel nostro NS è diversa da quella del problema completo originale
@@ -200,3 +205,8 @@ FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, c
 //    noi passiamo tutti i punti
 
 //NB: ATTENZIONE ai tag delle bcs ! noi in teoria abbiamo 1-2-3-4 inlet outlet emi coll!!
+
+//NB: adattare al codice in modo tale che le costanti siano prese dalla data struct
+
+//NB: scorri lungo i metodi per vedere i commenti, alcuni metodi neccessitano di una messa a punto
+//    in modo da essere compatibili per un codice parallelo

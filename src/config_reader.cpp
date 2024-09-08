@@ -25,6 +25,7 @@ void reader(data_struct& data){
     // Load Navier-Stokes physical parameters
     dati_json.at("navier_stokes").at("physical_parameters").at("viscosity").get_to(data.navier_stokes.physical_parameters.viscosity);
     dati_json.at("navier_stokes").at("physical_parameters").at("gamma").get_to(data.navier_stokes.physical_parameters.gamma);
+    dati_json.at("navier_stokes").at("physical_parameters").at("p_over_rho").get_to(data.navier_stokes.physical_parameters.p_over_rho);
 
     // Load Navier-Stokes numerical parameters
     dati_json.at("navier_stokes").at("numerical_parameters").at("delta_t").get_to(data.navier_stokes.numerical_parameters.delta_t);
@@ -42,8 +43,17 @@ void reader(data_struct& data){
     dati_json.at("drift_diffusion").at("physical_parameters").at("D").get_to(data.drift_diffusion.physical_parameters.D);
     dati_json.at("drift_diffusion").at("physical_parameters").at("ni").get_to(data.drift_diffusion.physical_parameters.ni);
     dati_json.at("drift_diffusion").at("physical_parameters").at("V_TH").get_to(data.drift_diffusion.physical_parameters.V_TH);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("kB").get_to(data.drift_diffusion.physical_parameters.kB);
     dati_json.at("drift_diffusion").at("physical_parameters").at("mu_p").get_to(data.drift_diffusion.physical_parameters.mu_p);
     dati_json.at("drift_diffusion").at("physical_parameters").at("mu_n").get_to(data.drift_diffusion.physical_parameters.mu_n);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("mu0").get_to(data.drift_diffusion.physical_parameters.mu0);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("stratosphere").get_to(data.drift_diffusion.physical_parameters.stratosphere);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("E_ON").get_to(data.drift_diffusion.physical_parameters.E_ON);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("E_ref").get_to(data.drift_diffusion.physical_parameters.E_ref);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("N_ref").get_to(data.drift_diffusion.physical_parameters.N_ref);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("Mm").get_to(data.drift_diffusion.physical_parameters.Mm);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("Avo").get_to(data.drift_diffusion.physical_parameters.Avo);
+    dati_json.at("drift_diffusion").at("physical_parameters").at("Ve").get_to(data.drift_diffusion.physical_parameters.Ve);
 
     // Load Drift-Diffusion numerical parameters
     dati_json.at("drift_diffusion").at("numerical_parameters").at("tolerance").get_to(data.drift_diffusion.numerical_parameters.tolerance);

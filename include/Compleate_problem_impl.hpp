@@ -12,7 +12,7 @@ CompleateProblem<dim>::CompleateProblem(parallel::distributed::Triangulation<dim
   , fe(1) 
   , dof_handler(tria)
   , mapping()
-  , timestep(1.e-5)
+  , timestep(1.e-5) // vogliamp passare uno dalla struct ? è diverso da NS
   ,	viscosity(d.navier_stokes.physical_parameters.viscosity)
   , gamma(d.navier_stokes.physical_parameters.gamma) 
   , degree(d.navier_stokes.numerical_parameters.FE_degree) 
@@ -20,7 +20,7 @@ CompleateProblem<dim>::CompleateProblem(parallel::distributed::Triangulation<dim
   , NS_dof_handler(tria)
   , volume_quad_formula(degree + 2)
   , face_quad_formula(degree + 2)
-  , NS_mapping() // serve ?
+  , NS_mapping() // serve ? nel nostro NS non cè
 {}
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -40,10 +40,10 @@ CompleateProblem<dim>::CompleateProblem(parallel::distributed::Triangulation<dim
     poisson_newton_update.reinit(locally_owned_dofs, mpi_communicator);              //non-ghosted
     poisson_rhs.reinit(locally_owned_dofs, mpi_communicator);                        //non-ghosted
 
-    Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);//  ghosted o non ghosted?
-    Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+    Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     //ghosted, servono in output, campo elettrico
+    Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     //ghosted
 
-    // ZERO_CONSTRAINTS FOR NEWTON POISSON PROBLEM
+    // ZERO_CONSTRAINTS FOR NEWTON POISSON PROBLEM (coerente con il nostro modo di procedere)
     zero_constraints_poisson.clear();
     zero_constraints_poisson.reinit(locally_relevant_dofs);
     zero_constraints_poisson.close(); 
@@ -67,8 +67,8 @@ CompleateProblem<dim>::CompleateProblem(parallel::distributed::Triangulation<dim
     mass_matrix_poisson.clear();  //store mass matrix
     mass_matrix_poisson.reinit(locally_owned_dofs, locally_owned_dofs, dsp,  mpi_communicator);
 
-    density_matrix.clear(); // store the term: M(n+p)q0/V_TH
-    density_matrix.reinit(locally_owned_dofs, locally_owned_dofs, dsp,  mpi_communicator);
+    density_matrix_poisson.clear(); // store the term: M(eta)q0/V_TH
+    density_matrix_poisson.reinit(locally_owned_dofs, locally_owned_dofs, dsp,  mpi_communicator);
 
 }
 //--------------------------------------------------------------------------------------------------------------------------------------------------
@@ -173,15 +173,526 @@ CompleateProblem<dim>::CompleateProblem(parallel::distributed::Triangulation<dim
   
 //----------------------------------------------------------------------------------------------------------------------------  
   
+template <int dim>
+void CompleateProblem<dim>::setup_drift_diffusion(const bool reinitialize_densities)
+{
+	if (reinitialize_densities) {  // questa condizione  non penso a noi serva
+		eta.reinit(locally_owned_dofs, mpi_communicator); //non-ghosted, non serve come output
+		ion_density.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator); // ghosted, lo vogliamo in output
+		old_ion_density.reinit(locally_owned_dofs, mpi_communicator); // non-ghosted non serve come output (magari però utile per confronti)
+	}
+    
+    // da qui, fino alla fine del metodo da sistemare e capire, come applicare le bcs ? come DD?
+
+	// Corona inception condition
+   Functions::FEFieldFunction<dim> solution_as_function_object(dof_handler, potential, mapping);
+	auto boundary_evaluator = [&] (const Point<dim> &p)
+		{
+			Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
+
+			const double EXP = std::exp((grad_U.norm()-E_ON)/E_ref);
+
+			return N_ref * EXP;
+		};
+    
+
+	ion_constraints.clear();
+	DoFTools::make_hanging_node_constraints(dof_handler, ion_constraints);
+	VectorTools::interpolate_boundary_values(dof_handler,1, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints);
+	VectorTools::interpolate_boundary_values(dof_handler,10, Functions::ConstantFunction<dim>(N_0), ion_constraints);
+	ion_constraints.close();
+
+	DynamicSparsityPattern dsp(dof_handler.n_dofs());
+	DoFTools::make_sparsity_pattern(dof_handler, dsp, ion_constraints, false);
+	sparsity_pattern.copy_from(dsp);
+
+	ion_mass_matrix.reinit(sparsity_pattern);
+	MatrixCreator::create_mass_matrix(mapping, dof_handler, QTrapezoid<dim>(),ion_mass_matrix, (const Function<dim> *const)nullptr, ion_constraints);
+
+	ion_rhs.reinit(dof_handler.n_dofs());
+
+	ion_system_matrix.reinit(sparsity_pattern);
+	drift_diffusion_matrix.reinit(sparsity_pattern);
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------
+
+template <int dim>
+void CompleateProblem<dim>::assemble_nonlinear_poisson()
+  {
+
+    //BUILDING POISSON SYSTEM MATRIX (for newton)
+    system_matrix_poisson = 0;
+    density_matrix_poisson = 0;
+
+    double new_value = 0;
+  
+    // generate the term:  (eta)*MASS_MAT   lumped version stored in density_matrix_poisson
+
+    for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
+
+      new_value = mass_matrix_poisson(*iter, *iter) * eta(*iter);
+      density_matrix_poisson.set(*iter,*iter,new_value);
+
+    }
+
+    density_matrix.compress(VectorOperation::insert);
+  
+    //pcout << "   The L_INF norm of the density matrix is: "<<density_matrix.linfty_norm() <<std::endl;
+    //pcout << "   The L_FROB norm of the density matrix is: "<<density_matrix.frobenius_norm() <<std::endl<<std::endl;
+
+    system_matrix_poisson.add(eps_r * eps_0, laplace_matrix_poisson); // SYS_MAT = SYS_MAT +  eps*A
+    system_matrix_poisson.add(q0 / V_TH, density_matrix_poisson);     // SYS_MAT = SYS_MAT + q0/V_TH * (eta)*MASS_MAT
 
 
+    //pcout << "   The L_INF norm of the poisson system matrix is: "<<poisson_system_matrix.linfty_norm() <<std::endl;
+    //pcout << "   The L_FROB norm of the poisson system matrix is: "<<poisson_system_matrix.frobenius_norm() <<std::endl<<std::endl;
+
+  
+    // BUILDING SYSTEM RHS
+    poisson_system_rhs = 0;
+
+    PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator); //temporary non-ghosted vector number 1
+    mass_matrix_poisson.vmult(temp,eta);
+    poisson_rhs.add(q0,temp);
+    laplace_matrix_poisson.vmult(temp,potential); //se con potential non funziona, creare il secondo temp
+    poisson_rhs.add(- eps_r * eps_0, temp);
+
+    //coerentemente con il nostro approccio non ci sono apply bcs
+
+    //pcout << "   The L_INF norm of the poisson system RHS is: "<<poisson_system_rhs.linfty_norm() <<std::endl;
+    //pcout << "   The L2 norm of the poisson system RHS is: " << poisson_system_rhs.l2_norm() << std::endl;
+    //pcout << "   End of solve assemble non-linear poisson"<< std::endl<<std::endl;
+
+  }
+  //----------------------------------------------------------------------------------------------------------------------------
+  template <int dim>
+  void CompleateProblem<dim>::solve_poisson()
+  {
+
+    //Apply zero boundary conditions to the whole newton poisson system
+
+    //Qua bisogna capire i tag delle bcs e imporre zero potential su collector e emitter
+    // in modo tale da avere bcs nulle sull newton update (ocio ai nomi)
+
+    std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
+
+    VectorTools::interpolate_boundary_values(mapping, dof_handler,1, Functions::ZeroFunction<dim>(), emitter_boundary_values);
+    MatrixTools::apply_boundary_values(emitter_boundary_values, poisson_system_matrix, newton_update, poisson_system_rhs);
+
+    VectorTools::interpolate_boundary_values(mapping, dof_handler,2, Functions::ZeroFunction<dim>(), collector_boundary_values);
+    MatrixTools::apply_boundary_values(collector_boundary_values, poisson_system_matrix, newton_update, poisson_system_rhs);
+    
+
+    //Solve poisson system problem
+    SolverControl sc_p(dof_handler.n_dofs(), 1e-10);     
+    PETScWrappers::SparseDirectMUMPS solverMUMPS(sc_p); 
+    solverMUMPS.solve(system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+    //Clamping 
+    for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
+  
+      if (poisson_newton_update[*iter] < -V_TH) { poisson_newton_update[*iter] = -V_TH; }
+      else if (poisson_newton_update[*iter] > V_TH) { poisson_newton_update[*iter] = V_TH; }
+
+      eta[*iter] *= std::exp(-poisson_newton_update[*iter]/V_TH); // aggiorno qua le cariche, non serve update charge
+      
+    }
+
+    poisson_newton_update.compress(VectorOperation::insert); 
+    eta.compress(VectorOperation::insert); 
+
+    // apply bcs a eta ?????
+    
+    //Update current solution
+    PETScWrappers::MPI::Vector temp;
+    temp.reinit(locally_owned_dofs, mpi_communicator);
+
+    temp = potential;
+    temp.add(1.0, poisson_newton_update);
 
 
+    potential = temp;
+
+    // pcout << "L2 norm of the current solution: " << current_solution.l2_norm() << std::endl;
+    // pcout << "L_INF norm of the current solution: " << current_solution.linfty_norm() << std::endl;
+    // pcout << "   End of solve poisson problem"<< std::endl<<std::endl;
+  
+  }
+
+//-----------------------------------------------------------------------------------------------------------------------------
+template <int dim>
+void CompleateProblem<dim>::solve_nonlinear_poisson(const unsigned int max_iter_newton, 
+                                                    const double toll_newton){
+
+  unsigned int counter = 0; // it keeps track of newton iteration
+
+  pcout << "   - START NEWTON METHOD - "<< std::endl;
+
+  double increment_norm = std::numeric_limits<double>::max(); // the increment norm is + inf
+
+  pcout << "   Initial Newton Increment Norm dphi: " << increment_norm << std::endl<<std::endl;
+  
+
+  while(counter < max_iter_newton && increment_norm > toll_newton){
+
+    pcout << "   NEWTON ITERATION NUMBER: "<< counter +1<<std::endl;
+    pcout << "   Assemble System Poisson Matrix"<< std::endl;
+
+    //NB: Mass and Laplace matrices are already build (see run method) ricordati di costruirle in run !
+    
+    assemble_nonlinear_poisson();     
+    solve_poisson();  //clamping on newton update, BCs and update of the charges are inside this method  
+    
+    increment_norm = poisson_newton_update.l2_norm(); //l'altro codice usa la norma infinito !!!
+
+    pcout << "   Update Increment: "<<increment_norm<<std::endl<<std::endl;
+
+    counter ++;
+
+    if(counter == max_iter_newton){
+      pcout<< "   MAX NUMBER OF NEWTON ITERATIONS REACHED!"<<std::endl;
+    }
+
+  }
+
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+template <int dim>
+void CompleateProblem<dim>::assemble_drift_diffusion_matrix()
+{
+
+  drift_diffusion_matrix = 0;
+
+  const unsigned int vertices_per_cell = 4;
+  FullMatrix<double> Robin(vertices_per_cell,vertices_per_cell);
+  
+  Vector<double> cell_rhs(vertices_per_cell);
+  std::vector<types::global_dof_index> local_dof_indices(vertices_per_cell);
+  FullMatrix<double> cell_matrix(vertices_per_cell, vertices_per_cell);
+
+  const unsigned int t_size = 3;
+
+  Vector<double> A_cell_rhs(t_size), B_cell_rhs(t_size);
+  FullMatrix<double> A(t_size,t_size), B(t_size,t_size);
+
+  std::vector<types::global_dof_index> A_local_dof_indices(t_size);
+  std::vector<types::global_dof_index> B_local_dof_indices(t_size);
+  
+  evaluate_electric_field(); // evaluate Field_X and Field_Y
+
+  const double Vh = std::sqrt(8.*numbers::PI*kB * T / Mm * Avo / 2. / numbers::PI); // Hopf velocity
+  //const double Vh = std::sqrt(kB * T / Mm * Avo / 2. / numbers::PI); // Thermal velocity
 
 
+  QTrapezoid<dim-1>	face_quadrature;
+  const unsigned int n_q_points = face_quadrature.size();
+  FEFaceValues<dim> face_values(fe, face_quadrature, update_values | update_quadrature_points /*| update_normal_vectors*/ | update_JxW_values);
 
 
-  //HELPER FUNCTION IMPLEMENTATION
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+        if (cell->is_locally_owned()){
+
+            A = 0;
+            B = 0;
+            cell_matrix = 0;
+            cell_rhs = 0;
+            Robin = 0;
+            A_cell_rhs = 0;
+            B_cell_rhs = 0;
+            cell->get_dof_indices(local_dof_indices);
+
+            // Robin conditions at outlet and (optional) at collector
+            if (cell->at_boundary()) {
+                for (const auto &face : cell->face_iterators()) {
+                    if (face->at_boundary() && face->boundary_id() == 11) {
+
+                        face_values.reinit(cell,face);
+
+                        for (unsigned int i = 0; i < vertices_per_cell; ++i) {
+
+                            const double vel_f = Vel_X(local_dof_indices[i]);
+
+                            for (unsigned int q = 0; q < n_q_points; ++q) {
+                                for (unsigned int j = 0; j < vertices_per_cell; ++j) {
+                                    Robin(i,j) += face_values.JxW(q) * face_values.shape_value(i,q) * face_values.shape_value(j,q) * vel_f;
+                                }
+                            }
+                        }
+
+                    } else if (face->at_boundary() && (face->boundary_id() == 2 || face->boundary_id() == 3)) {
+                        face_values.reinit(cell,face);
+
+                        for (unsigned int i = 0; i < vertices_per_cell; ++i) {
+                            Tensor<1,dim> Evec;
+                            Evec[0] = Field_X(local_dof_indices[i]);
+                            Evec[1] = Field_Y(local_dof_indices[i]);
+
+                            for (unsigned int q = 0; q < n_q_points; ++q) {
+
+                                //const Tensor<1,dim> n = face_values.normal_vector(q); // Normal  pointing into the electrode
+                                //const double En = Evec * n;
+
+                                // Alternatively, as the field should be normal to the electrode (equipotential surface):
+                                const double En = std::sqrt(Evec[0]*Evec[0] + Evec[1]*Evec[1]);
+
+                                // CHECK
+                                if (std::isnan(En) || En <0.) cout << "WARNING! Scalar product is " << En << " in " << face->center() << endl;
+
+                                for (unsigned int j = 0; j < vertices_per_cell; ++j) {
+                                        Robin(i,j) += face_values.JxW(q) * face_values.shape_value(i,q) * face_values.shape_value(j,q) * (Vh + mu * En);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // End RObin conditions
+
+            // Lexicographic ordering
+            const Point<dim> v1 = cell->vertex(2); // top left
+            const Point<dim> v2 = cell->vertex(3); // top right
+            const Point<dim> v3 = cell->vertex(0); // bottom left
+            const Point<dim> v4 = cell->vertex(1); // bottom right
+
+            const double u1 = -potential[local_dof_indices[2]]/V_TH;
+            const double u2 = -potential[local_dof_indices[3]]/V_TH;
+            const double u3 = -potential[local_dof_indices[0]]/V_TH;
+            const double u4 = -potential[local_dof_indices[1]]/V_TH;
+
+            const double l_12 = side_length(v1,v2);
+            const double l_31 = side_length(v1,v3);
+            const double l_24 = side_length(v4,v2);
+            const double l_43 = side_length(v3,v4);
+
+            const double l_alpha = std::sqrt(l_12*l_12 + l_24*l_24 - 2*((v1 - v2) * (v4 - v2)) );
+            const double l_beta = std::sqrt(l_43*l_43 + l_24*l_24 - 2*((v2 - v4) * (v3 - v4)) );
+
+            Tensor<1,dim> u_f_1, u_f_2, u_f_3, u_f_4;
+            u_f_1[0] = Vel_X(local_dof_indices[2]);
+            u_f_1[1] = Vel_Y(local_dof_indices[2]);
+            u_f_2[0] = Vel_X(local_dof_indices[3]);
+            u_f_2[1] = Vel_Y(local_dof_indices[3]);
+            u_f_3[0] = Vel_X(local_dof_indices[0]);
+            u_f_3[1] = Vel_Y(local_dof_indices[0]);
+            u_f_4[0] = Vel_X(local_dof_indices[1]);
+            u_f_4[1] = Vel_Y(local_dof_indices[1]);
+
+            const Tensor<1,dim> dir_21 = (v1 - v2)/l_12;
+            const Tensor<1,dim> dir_42 = (v2 - v4)/l_24;
+            const Tensor<1,dim> dir_34 = (v4 - v3)/l_43;
+            const Tensor<1,dim> dir_13 = (v3 - v1)/l_31;
+
+            const double alpha21 = (u_f_2 * dir_21)/D*l_12 + (u1 - u2);
+            const double alpha42 = (u_f_4 * dir_42)/D*l_24 + (u2 - u4);
+            const double alpha34 = (u_f_3 * dir_34)/D*l_43 + (u4 - u3);
+            const double alpha13 = (u_f_1 * dir_13)/D*l_31 + (u3 - u1);
+
+            if (l_alpha >= l_beta) { // l_alpha is the longest diagonal: split by beta
+                        const double l_23 = side_length(v2,v3);
+                        const Tensor<1,dim> dir_23 = (v3 - v2)/l_beta;
+
+                        const double alpha23 = (u_f_2 * dir_23)/D*l_23 + (u3 - u2);
+
+                        // Triangle A:
+                        A= compute_triangle_matrix(v2,v1,v3, alpha21, alpha13, -alpha23);
+
+                        // Triangle B:
+                        B = compute_triangle_matrix(v3,v4,v2, alpha34, alpha42, alpha23);
+
+                        // Matrix assemble
+                        A_local_dof_indices[0] = local_dof_indices[3];
+                        A_local_dof_indices[1] = local_dof_indices[2];
+                        A_local_dof_indices[2] = local_dof_indices[0];
+
+                        B_local_dof_indices[0] = local_dof_indices[0];
+                        B_local_dof_indices[1] = local_dof_indices[1];
+                        B_local_dof_indices[2] = local_dof_indices[3];
+
+
+                    } else { // l_beta is the longest diagonal: split by alpha
+                        const double l_14 = side_length(v1,v4);
+                        const Tensor<1,dim> dir_14 = (v4 - v1)/l_alpha;
+
+                        const double alpha14 = (u_f_1 * dir_14)/D*l_14 + (u4 - u1);
+
+                        // Triangle A:
+                        A = compute_triangle_matrix(v4,v2,v1, alpha42, alpha21, alpha14);
+
+                        // Triangle B:
+                        B = compute_triangle_matrix(v1,v3,v4, alpha13, alpha34, -alpha14);
+
+                        A_local_dof_indices[0] = local_dof_indices[1];
+                        A_local_dof_indices[1] = local_dof_indices[3];
+                        A_local_dof_indices[2] = local_dof_indices[2];
+
+                        B_local_dof_indices[0] = local_dof_indices[2];
+                        B_local_dof_indices[1] = local_dof_indices[0];
+                        B_local_dof_indices[2] = local_dof_indices[1];
+                    }
+
+                    // As the ion system matrix is M + delta t DD, the contributions are multiplied by the timestep
+                    for (unsigned int i = 0; i < t_size; ++i) {
+                        for (unsigned int j = 0; j < t_size; ++j) {
+                            A(i,j) = A(i,j)*timestep;
+                            B(i,j) = B(i,j)*timestep;
+                        }
+                    }
+
+                    for (unsigned int i = 0; i < vertices_per_cell; ++i) {
+                        for (unsigned int j = 0; j < vertices_per_cell; ++j) {
+                            Robin(i,j) = Robin(i,j)*timestep;
+                        }
+                    }
+                    
+                    // RCIRODA I CORRETTI CONSTRAINTS AL BORDO !!
+                    ion_constraints.distribute_local_to_global(A, A_cell_rhs,  A_local_dof_indices, ion_system_matrix, ion_rhs);
+                    ion_constraints.distribute_local_to_global(B, B_cell_rhs,  B_local_dof_indices, ion_system_matrix, ion_rhs);
+                    ion_constraints.distribute_local_to_global(Robin,  cell_rhs, local_dof_indices, ion_system_matrix, ion_rhs);
+        }
+	 }// SERVONO TUTTI I COMPRESS
+}
+
+//--------------------------------------------------------------------------------------------------------------------------------------------------------
+template <int dim>
+void CompleateProblem<dim>::solve_drift_diffusion()
+{ 
+
+  PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
+  SolverControl sc_ion(dof_handler.n_dofs(), 1e-10);
+  PETScWrappers::SparseDirectMUMPS solverMUMPS_ion(sc_ion); 
+  solverMUMPS_hole.solve(ion_system_matrix, temp, ion_rhs);
+
+  hole_constraints.distribute(temp_hole); // qua constraints per le ions (paragona a nostro DD)
+
+  temp.compress(VectorOperation::insert);
+  ion_density = temp;
+
+  /*
+  pcout << "   L_INF norm of the hole_density: " << hole_density.linfty_norm() << std::endl;
+  pcout << "   L_INF norm of the electron_density: " << electron_density.linfty_norm() << std::endl;
+  */
+
+  //pcout << "   End of solve drift diffusion"<< std::endl<<std::endl;
+}
+//--------------------------------------------------------------------------------------------------------------------------------------------------
+template <int dim>
+void CompleateProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step()
+{   
+    PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
+
+	ion_rhs = 0;
+	ion_system_matrix = 0;
+
+	ion_mass_matrix.vmult(temp, old_ion_density);
+	ion_rhs += temp;
+
+	// Integration in time with BE:
+	ion_system_matrix.copy_from(ion_mass_matrix);
+    assemble_drift_diffusion_matrix();
+
+    // Uncomment to add a non-zero forcing term to DD equations ...
+	/*
+    Vector<double> forcing_terms(old_ion_density.size());
+    VectorTools::create_right_hand_side(dof_handler, QTrapezoid<dim>(), Functions::ZeroFunction<dim>(), tmp); // ... by changing the ZeroFunction to an appropriate one
+	forcing_terms = tmp;
+	forcing_terms *= timestep;
+	ion_rhs += forcing_terms;
+	*/
+
+    solve_drift_diffusion();
+}
+//------------------------------------------------------------------------------------------------------------------------------------------------------
+template <int dim>
+void CompleateProblem<dim>::evaluate_electric_field()
+{
+    Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
+    Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
+
+    const unsigned int 		dofs_per_cell = fe.n_dofs_per_cell();
+    std::vector<double>		global_dof_hits(dof_handler.n_dofs()); //sicuro funzioni ?
+
+    PETScWrappers::MPI::Vector		el_field_X(locally_owned_dofs, mpi_communicator);
+    PETScWrappers::MPI::Vector		el_field_Y(locally_owned_dofs, mpi_communicator);
+
+	QTrapezoid<dim-1>			iv_quadrature;
+	FEInterfaceValues<dim> 		fe_iv(fe, iv_quadrature, update_gradients);
+
+	const unsigned int 		    n_q_points = iv_quadrature.size();
+    std::vector<Tensor<1,dim>> 	iv_gradients(n_q_points);
+
+	std::vector<types::global_dof_index> 	local_dof_indices(dofs_per_cell);
+    
+
+    // NB: in questi cicli for bisogna mettere una condizione if per la cella locale del processore
+	for (auto &cell : dof_handler.active_cell_iterators())
+	  {
+		for (const auto face_index : GeometryInfo<dim>::face_indices())
+	      {
+
+	        fe_iv.reinit(cell, face_index);
+	        local_dof_indices = fe_iv.get_interface_dof_indices();
+
+	        fe_iv.get_average_of_function_gradients(potential, iv_gradients);
+
+	        for (const auto q : fe_iv.quadrature_point_indices()) {
+	          for (const auto i : fe_iv.dof_indices()) {
+
+				global_dof_hits[local_dof_indices[i]] += 1.;
+
+				for (unsigned int d = 0; d < dim; ++d) {
+					if (d == 0)
+						el_field_X(local_dof_indices[i]) += - iv_gradients[q][d]; //-grad_phi_i[d] / n_q_points;
+					else if (d == 1)
+						el_field_Y(local_dof_indices[i]) +=  - iv_gradients[q][d]; // * (J_inverse[d] * shape_gradient) * dx;
+					else
+						Assert(false, ExcNotImplemented());
+				}
+
+	          }
+	        }
+	      }
+	  }
+   // qua sicuro va cambiato perchè accedo ai valori locali 
+   // Take the average of all dof values
+   for (unsigned int k = 0; k < dof_handler.n_dofs(); k++) {
+	   el_field_X(k) /= std::max(1., global_dof_hits[k]);
+	   el_field_Y(k) /= std::max(1., global_dof_hits[k]);
+   }
+
+   Field_X = el_field_X;
+   Field_Y = el_field_Y;
+   
+}
+//-----------------------------------------------------------------------------------------------------------------------------------------------------
+  template <int dim>
+  void CompleateProblem<dim>::output_results(const unsigned int cycle)
+  {
+
+    DataOut<dim> data_out;
+    data_out.attach_dof_handler(dof_handler);
+    data_out.add_data_vector(potential, "phi");
+    data_out.add_data_vector(ion_density, "Ion_Density");
+    data_out.add_data_vector(pressure, "Pressure");
+    data_out.add_data_vector(Vel_X, "Velocity_X");
+    data_out.add_data_vector(Vel_Y, "Velocity_Y");
+    data_out.add_data_vector(Field_X, "Field_X");
+    data_out.add_data_vector(Field_Y, "Field_Y");
+    
+
+    Vector<float> subdomain(triangulation.n_active_cells());
+    for (unsigned int i = 0; i < subdomain.size(); ++i)
+      subdomain(i) = triangulation.locally_owned_subdomain();
+    data_out.add_data_vector(subdomain, "subdomain");
+    data_out.build_patches();
+    data_out.write_vtu_with_pvtu_record("./", "solution", cycle, mpi_communicator, 2, 1);
+
+
+  }
+  //##################### - HELPER FUNCTION IMPLEMENTATION - #####################################################################################
 
   void bernoulli (double x, double &bp, double &bn)
   {
@@ -335,4 +846,16 @@ FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, c
 	tria_matrix(2,2) = - (tria_matrix(0,2)+tria_matrix(1,2));
 
 	return tria_matrix;
+}
+//----------------------------------------------------------------------------------------------------------------------------------------------------
+Tensor<1,2> get_emitter_normal(const Point<2> a) { //serve per calcolare il thrust
+
+	Tensor<1,2> normal;
+
+	normal[0] = a[0] - X;
+	normal[1] = a[1];
+
+	const double norm = std::sqrt(normal[0]*normal[0]+normal[1]*normal[1]);
+
+	return normal/norm;
 }
