@@ -51,7 +51,7 @@ public:
 
     CompleteProblem(parallel::distributed::Triangulation<dim> &tria, const data_struct &d,unsigned short int i);
 
-    void run(); // ha senso mettere toleranze qua ?
+    void run(); // ha senso mettere tolleranze qua ?
 
 private:
 
@@ -74,7 +74,7 @@ private:
     void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints, bool assemble_system);
     std::pair<unsigned int, double> CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step);
     void solve_navier_stokes();
-    void estimate_thrust();
+    // void estimate_thrust();
 
     void evaluate_electric_field();
     void output_results(const unsigned int step); // preso dal nostro DD dovrebbe funzionare
