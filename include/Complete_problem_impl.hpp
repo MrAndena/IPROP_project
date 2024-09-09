@@ -12,7 +12,7 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
   , fe(1) 
   , dof_handler(tria)
   , mapping()
-  , timestep(1.e-5) // vogliamp passare uno dalla struct ? è diverso da NS
+  , timestep(1.e-5) // vogliamo passare uno dalla struct ? è diverso da NS
   ,	viscosity(d.navier_stokes.physical_parameters.viscosity)
   , gamma(d.navier_stokes.physical_parameters.gamma) 
   , degree(d.navier_stokes.numerical_parameters.FE_degree) 
@@ -182,10 +182,10 @@ void CompleteProblem<dim>::setup_drift_diffusion(const bool reinitialize_densiti
 		old_ion_density.reinit(locally_owned_dofs, mpi_communicator); // non-ghosted non serve come output (magari però utile per confronti)
 	}
     
-    // da qui, fino alla fine del metodo da sistemare e capire, come applicare le bcs ? come DD?
+  // da qui, fino alla fine del metodo da sistemare e capire, come applicare le bcs ? come DD? attenzione ai tag
 
 	// Corona inception condition
-   Functions::FEFieldFunction<dim> solution_as_function_object(dof_handler, potential, mapping);
+  Functions::FEFieldFunction<dim> solution_as_function_object(dof_handler, potential, mapping);
 	auto boundary_evaluator = [&] (const Point<dim> &p)
 		{
 			Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
@@ -267,27 +267,28 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
   }
   //----------------------------------------------------------------------------------------------------------------------------
   template <int dim>
-  void CompleteProblem<dim>::solve_poisson()
+  double CompleteProblem<dim>::solve_poisson()
   {
 
     //Apply zero boundary conditions to the whole newton poisson system
-
-    //Qua bisogna capire i tag delle bcs e imporre zero potential su collector e emitter
-    // in modo tale da avere bcs nulle sull newton update (ocio ai nomi)
+    //We apply the BCs on tags 3 (emitter) and 4 (collector)
 
     std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
 
-    VectorTools::interpolate_boundary_values(mapping, dof_handler,1, Functions::ZeroFunction<dim>(), emitter_boundary_values);
-    MatrixTools::apply_boundary_values(emitter_boundary_values, poisson_system_matrix, newton_update, poisson_system_rhs);
+    VectorTools::interpolate_boundary_values(mapping, dof_handler,3, Functions::ZeroFunction<dim>(), emitter_boundary_values);
+    MatrixTools::apply_boundary_values(emitter_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
 
-    VectorTools::interpolate_boundary_values(mapping, dof_handler,2, Functions::ZeroFunction<dim>(), collector_boundary_values);
-    MatrixTools::apply_boundary_values(collector_boundary_values, poisson_system_matrix, newton_update, poisson_system_rhs);
+    VectorTools::interpolate_boundary_values(mapping, dof_handler,4, Functions::ZeroFunction<dim>(), collector_boundary_values);
+    MatrixTools::apply_boundary_values(collector_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
     
 
     //Solve poisson system problem
     SolverControl sc_p(dof_handler.n_dofs(), 1e-10);     
     PETScWrappers::SparseDirectMUMPS solverMUMPS(sc_p); 
     solverMUMPS.solve(system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+    //Compute the residual before the clamping
+    double residual = poisson_newton_update.linfty_norm();
 
     //Clamping 
     for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
@@ -302,7 +303,7 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
     poisson_newton_update.compress(VectorOperation::insert); 
     eta.compress(VectorOperation::insert); 
 
-    // apply bcs a eta ?????
+    // apply bcs a eta ?????!!!!! - - - - - - 
     
     //Update current solution
     PETScWrappers::MPI::Vector temp;
@@ -314,6 +315,8 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
 
     potential = temp;
 
+    return residual;
+
     // pcout << "L2 norm of the current solution: " << current_solution.l2_norm() << std::endl;
     // pcout << "L_INF norm of the current solution: " << current_solution.linfty_norm() << std::endl;
     // pcout << "   End of solve poisson problem"<< std::endl<<std::endl;
@@ -323,11 +326,11 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
 //-----------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 void CompleteProblem<dim>::solve_nonlinear_poisson(const unsigned int max_iter_newton, 
-                                                    const double toll_newton){
+                                                   const double toll_newton){
 
   unsigned int counter = 0; // it keeps track of newton iteration
 
-  pcout << "   - START NEWTON METHOD - "<< std::endl;
+  pcout << "   - START POISSON NEWTON - "<< std::endl;
 
   double increment_norm = std::numeric_limits<double>::max(); // the increment norm is + inf
 
@@ -339,13 +342,11 @@ void CompleteProblem<dim>::solve_nonlinear_poisson(const unsigned int max_iter_n
     pcout << "   NEWTON ITERATION NUMBER: "<< counter +1<<std::endl;
     pcout << "   Assemble System Poisson Matrix"<< std::endl;
 
-    //NB: Mass and Laplace matrices are already build (see run method) ricordati di costruirle in run !
+    //NB: Mass and Laplace matrices are already build (see run method) ricordati di costruirle in run ! !!!!!!
     
     assemble_nonlinear_poisson();     
-    solve_poisson();  //clamping on newton update, BCs and update of the charges are inside this method  
+    increment_norm = solve_poisson();  //residual computation, clamping on newton update, BCs and update of the charges are inside this method  
     
-    increment_norm = poisson_newton_update.l2_norm(); //l'altro codice usa la norma infinito !!!
-
     pcout << "   Update Increment: "<<increment_norm<<std::endl<<std::endl;
 
     counter ++;
@@ -450,7 +451,7 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
                     }
                 }
             }
-            // End RObin conditions
+            // End Robin conditions
 
             // Lexicographic ordering
             const Point<dim> v1 = cell->vertex(2); // top left
@@ -560,7 +561,7 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
 template <int dim>
 void CompleteProblem<dim>::solve_drift_diffusion()
 { 
-
+  // aggiornare e mettere come il nostro
   PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
   SolverControl sc_ion(dof_handler.n_dofs(), 1e-10);
   PETScWrappers::SparseDirectMUMPS solverMUMPS_ion(sc_ion); 
@@ -582,7 +583,8 @@ void CompleteProblem<dim>::solve_drift_diffusion()
 template <int dim>
 void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step()
 {   
-    PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
+  
+  PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
 
 	ion_rhs = 0;
 	ion_system_matrix = 0;
@@ -592,7 +594,7 @@ void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step()
 
 	// Integration in time with BE:
 	ion_system_matrix.copy_from(ion_mass_matrix);
-    assemble_drift_diffusion_matrix();
+  assemble_drift_diffusion_matrix();
 
     // Uncomment to add a non-zero forcing term to DD equations ...
 	/*
@@ -603,26 +605,27 @@ void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step()
 	ion_rhs += forcing_terms;
 	*/
 
-    solve_drift_diffusion();
+  solve_drift_diffusion();
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 void CompleteProblem<dim>::evaluate_electric_field()
 {
-    Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
-    Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
 
-    const unsigned int 		dofs_per_cell = fe.n_dofs_per_cell();
-    std::vector<double>		global_dof_hits(dof_handler.n_dofs()); //sicuro funzioni ?
+  Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
+  Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
 
-    PETScWrappers::MPI::Vector		el_field_X(locally_owned_dofs, mpi_communicator);
-    PETScWrappers::MPI::Vector		el_field_Y(locally_owned_dofs, mpi_communicator);
+  const unsigned int 		dofs_per_cell = fe.n_dofs_per_cell();
+  std::vector<double>		global_dof_hits(dof_handler.n_dofs()); //sicuro funzioni ?
 
-	QTrapezoid<dim-1>			iv_quadrature;
+  PETScWrappers::MPI::Vector		el_field_X(locally_owned_dofs, mpi_communicator);
+  PETScWrappers::MPI::Vector		el_field_Y(locally_owned_dofs, mpi_communicator);
+
+	QTrapezoid<dim-1>			    iv_quadrature;
 	FEInterfaceValues<dim> 		fe_iv(fe, iv_quadrature, update_gradients);
 
-	const unsigned int 		    n_q_points = iv_quadrature.size();
-    std::vector<Tensor<1,dim>> 	iv_gradients(n_q_points);
+	const unsigned int 		      n_q_points = iv_quadrature.size();
+  std::vector<Tensor<1,dim>> 	iv_gradients(n_q_points);
 
 	std::vector<types::global_dof_index> 	local_dof_indices(dofs_per_cell);
     
@@ -668,7 +671,7 @@ void CompleteProblem<dim>::evaluate_electric_field()
    
 }
   
-  //##################### - Navier-Stokes - #####################################################################################
+//##################### - Navier-Stokes - #####################################################################################
 
 template <int dim>
 void CompleteProblem<dim>::setup_NS()
@@ -1130,89 +1133,119 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
 
 
-//############ RUN AND OUTPUT RESULTS  ############################
+//############ - RUN AND OUTPUT RESULTS - #######################################################################################################
 
-//-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 void CompleteProblem<dim>::run()
 {
-	cout << "From Peek's law:  " << endl;
-	cout << "	the field at emitter surface is " << Ep*1e-6 << " [MV/m] " <<endl;
-	cout << "	the ionization radius is "<< Ri*1e+3 << " [mm]" << endl;
-	cout << " 	the ionization potential is " << Vi*1e-3  << " [kV]" << endl;
-	cout << endl;
 
-  // create_mesh();
+	pcout << "From Peek's law:  " << std::endl;
+	pcout << "	the field at emitter surface is " << Ep*1e-6 << " [MV/m] " <<std::endl;
+	pcout << "	the ionization radius is "<< Ri*1e+3 << " [mm]" << std::endl;
+	pcout << " 	the ionization potential is " << Vi*1e-3  << " [kV]" << std::endl;
+	pcout << std::endl;
 
-  const unsigned int max_steps = 500;
-
-	step_number = 0;
+  
+  pcout << "   SETUP POISSON PROBLEM ... "<< std::endl;
 	setup_poisson();
+  
+  pcout << "   ASSEMBLE MASS AND LAPLACE MATRICES ... "<< std::endl;
+  assemble_laplace_matrix();
+  assemble_mass_matrix();
+
+
+  // ancora mi è oscuro il senso di risolvere lui per cominciare, in questo modo ho potential = poisson_newton_update 
+  // e un  poisson_newton_update non vuoto. magari servono per gli altri metodi
 	solve_homogeneous_poisson();
 
-	setup_drift_diffusion(/*re-initialize densities = */ true);
-	VectorTools::interpolate(mapping,dof_handler, Functions::ConstantFunction<dim>(N_0), old_ion_density);
+  
+  pcout << "   SETUP DRIFT-DIFFUSION PROBLEM ... "<< std::endl;
+	setup_drift_diffusion(/*re-initialize densities = */ true); // sta cosa del bool dentro è strana
+                                                              // nel codice originale, false, non viene mai messo
 
+  pcout << "   INITIALIZE OLD_ION_DENSITY ... "<< std::endl;
+	VectorTools::interpolate(mapping, dof_handle, Functions::ConstantFunction<dim>(N_0), old_ion_density); //N_0 deriva da stratosphere bool
+  
+  pcout << "   SETUP NAVIER STOKES PROBLEM ... "<< std::endl;
 	setup_navier_stokes();
-
+  
+  pcout << "   STORE INITIAL CONDITIONS ... "<< std::endl;
 	output_results(0);
 
+
+  // set errors and tolerances
+  step_number = 0; //impose step_number in the object
+
+  const unsigned int max_steps = 500;
 	const double tol = 1.e-9;
 	const unsigned int max_it = 1e+3;
 
 	const double time_tol = 5.e-3; //1.e-3;
 	double time_err = 1. + time_tol;
 
+
+  pcout << "   START COMPLEATE PROBLEM ... "<< std::endl;
+
 	while (step_number < max_steps && time_err > time_tol)
 	  {
 
 		++step_number;
-
+    pcout << "   DD-NS ITERATION:  "<<step_number<< std::endl;
 		// Faster time-stepping (adaptive time-stepping would be MUCH better!)
     // timestep varia, diventando sempre più grande, col procedere delle iterazioni temporali
 		if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-3)
 			timestep*= 10.;
 
+
 		const double gummel_tol = 1.e-4;
 		double err = gummel_tol + 1.;
 		unsigned int it = 0;
 
-		eta = old_ion_density;
-		Vector<double> previous_density(old_ion_density.size());
-    step_number
+		eta = old_ion_density; // basically eta = N_0 function
+
+		PETScWrappers::MPI::Vector previous_density(locally_owned_dofs, mpi_communicator); //non-ghosted
+
+    pcout << "   GUMMEL ALGORITHM ... "<< std::endl;
+    
 		while (err > gummel_tol && it < max_it) {
 
-			solve_nonlinear_poisson(tol, max_it); // Updates potential and eta
+      pcout << "   GUMMEL ITERATION: "<< it<<std::endl;
 
-			previous_density = ion_density;
-			perform_drift_diffusion_fixed_point_iteration_step(); // Updates ion_density
+			solve_nonlinear_poisson(tol, max_it); // UPDATE potential AND eta
+
+			previous_density = ion_density; // save the previously computed ion_density
+
+			perform_drift_diffusion_fixed_point_iteration_step(); // UPDATE ion_density
+
 			previous_density -= ion_density;
+
 			err = previous_density.linfty_norm()/ion_density.linfty_norm();
 
 			eta = ion_density;
+
 			it++;
 		}
+
 		if (it >= max_it)
-			cout << "WARNING! DD achieved a relative error " << err << " after " << it << " iterations" << endl;
+			pcout << "WARNING! DD achieved a relative error " << err << " after " << it << " iterations" << std::endl;
 
 		previous_density = old_ion_density;
 		previous_density -= ion_density;
 		time_err = previous_density.linfty_norm()/old_ion_density.linfty_norm();
-		cout << "Density change from previous time-step is: " << time_err*100. << " %" << endl;
+		pcout << "Density change from previous time-step is: " << time_err*100. << " %" << std::endl;
 
 		old_ion_density = ion_density;
 
-		if (step_number % 40 == 1)  // Mesh refinement every 40 timesteps
-			// refine_mesh();
-
-		if (step_number % 40 == 1) // NS solution update every 40 timesteps
+		if (step_number % 40 == 1){ // NS solution update every 40 timesteps
+      pcout << "   SOLVE NAVIER STOKES ... "<< std::endl;
 			solve_navier_stokes();
+      }
 
 		output_results(step_number);
 
 	  }
 
-	std::cout << " 	Elapsed CPU time: " << timer.cpu_time()/60. << " minutes.\n" << std::endl << std::endl;
+    pcout << " 	Elapsed CPU time: " << timer.cpu_time()/60. << " minutes.\n" << std::endl << std::endl;
 
 }
 
@@ -1243,12 +1276,7 @@ void CompleteProblem<dim>::output_results(const unsigned int cycle)
 
   }
 
-
-
-
-
-
-  //##################### - HELPER FUNCTION IMPLEMENTATION - #####################################################################################
+//##################### - HELPER FUNCTION IMPLEMENTATION - #####################################################################################
 
   void bernoulli (double x, double &bp, double &bn)
   {

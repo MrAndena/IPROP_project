@@ -59,15 +59,15 @@ private:
     void assemble_laplace_matrix();
     void assemble_mass_matrix();
     void assemble_nonlinear_poisson();
-    void solve_poisson();
+    double solve_poisson(); // update poisson and eta. it return the residual (L_INF norm of newton_update)
     void solve_homogeneous_poisson(); // a che serve questa ?
-    void solve_nonlinear_poisson(const unsigned int max_iterations,const double tol);
+    void solve_nonlinear_poisson(const unsigned int max_iterations,const double tol); // update poisson and eta
 
-    void setup_drift_diffusion(const bool reinitialize_densities);
-    void assemble_drift_diffusion_matrix();
-    void apply_drift_diffusion_boundary_conditions(Vector<double> &solution); // in teoria non serve come in DD
-    void solve_drift_diffusion();
-    void perform_drift_diffusion_fixed_point_iteration_step(); // vedere a che serve
+    void setup_drift_diffusion(const bool reinitialize_densities); //setup DD
+    void assemble_drift_diffusion_matrix(); // build DD matrix
+    //void apply_drift_diffusion_boundary_conditions(Vector<double> &solution);  in teoria non serve come in DD
+    void solve_drift_diffusion();  // used inside "perform_dd.." to update ion_density
+    void perform_drift_diffusion_fixed_point_iteration_step();  // this method update ion_density
 
     
     void CompleteProblem<dim>::setup_NS();
@@ -76,7 +76,7 @@ private:
     void solve_navier_stokes();
     // void estimate_thrust();
 
-    void evaluate_electric_field();
+    void evaluate_electric_field(); // usato sia in assemble_DD che in solve_NS 
     void output_results(const unsigned int step); // preso dal nostro DD dovrebbe funzionare
     
     // Data for the simulation
