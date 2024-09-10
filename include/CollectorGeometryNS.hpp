@@ -176,7 +176,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
         grid_in.attach_triangulation(tria);           
         grid_in.read_msh(input_file);                 
 
-        const types::manifold_id emitter = 1;        
+        const types::manifold_id emitter = 3;        
        
         const double distance_emitter_collector = s_data.geometrical_parameters.distance_emitter_collector;
         const double r_emi = s_data.geometrical_parameters.emitter_radius[i];
@@ -184,7 +184,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
         const Point<2> center(X,0.0);
         SphericalManifold<2> emitter_manifold(center);
 
-        const types::manifold_id collector = 2;
+        const types::manifold_id collector = 4;
 
         CollectorGeometry<2> collector_manifold;
 
@@ -196,10 +196,11 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
         // const Point<2> center2(r_col,0.0);
         // SphericalManifold<2> collector_manifold(center2);               
 
-        tria.set_all_manifold_ids_on_boundary(1, emitter);
+        tria.set_all_manifold_ids_on_boundary(3, emitter);
         tria.set_manifold(emitter, emitter_manifold);
-        tria.set_all_manifold_ids_on_boundary(2, collector);
+        tria.set_all_manifold_ids_on_boundary(4, collector);
         tria.set_manifold(collector, collector_manifold);
+        
         std::cout  << "Active cells: " << tria.n_active_cells() << std::endl;
 
   }else{ //NL Poisson

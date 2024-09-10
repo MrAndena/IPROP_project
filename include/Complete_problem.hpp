@@ -56,14 +56,16 @@ public:
 private:
 
     void setup_poisson();
-    void assemble_laplace_matrix();
-    void assemble_mass_matrix();
+    void initialize_potential();
+    void assemble_poisson_laplace_matrix();
+    void assemble_poisson_mass_matrix();
     void assemble_nonlinear_poisson();
     double solve_poisson(); // update poisson and eta. it return the residual (L_INF norm of newton_update)
     void solve_homogeneous_poisson(); // a che serve questa ?
     void solve_nonlinear_poisson(const unsigned int max_iterations,const double tol); // update poisson and eta
 
     void setup_drift_diffusion(const bool reinitialize_densities); //setup DD
+    void assemble_drift_diffusion_mass_matrix();
     void assemble_drift_diffusion_matrix(); // build DD matrix
     //void apply_drift_diffusion_boundary_conditions(Vector<double> &solution);  in teoria non serve come in DD
     void solve_drift_diffusion();  // used inside "perform_dd.." to update ion_density
@@ -77,7 +79,7 @@ private:
     // void estimate_thrust();
 
     void evaluate_electric_field(); // usato sia in assemble_DD che in solve_NS 
-    void output_results(const unsigned int step); // preso dal nostro DD dovrebbe funzionare
+    void output_results(const unsigned int step); // preso dal nostro DD dovrebbe funzionare dovrebbere essere const method no?
     
     // Data for the simulation
     data_struct m_data;
@@ -101,13 +103,9 @@ private:
     DoFHandler<dim> dof_handler;
     MappingQ1<dim>  mapping;
 
-    // Constraints (messi come l'ultimo dd, non ci sono gli elettorni!?)
+    // Constraints (messi come l'ultimo dd, non ci sono gli elettorni)
     AffineConstraints<double> ion_constraints;
     AffineConstraints<double> zero_constraints_poisson;
-
-    // non capisco sti due a che servono
-    PETScWrappers::MPI::Vector Field_X; 
-    PETScWrappers::MPI::Vector Field_Y;
     
     // Poisson Matrices
     PETScWrappers::MPI::SparseMatrix laplace_matrix_poisson;
@@ -124,12 +122,15 @@ private:
     PETScWrappers::MPI::Vector poisson_newton_update;
     PETScWrappers::MPI::Vector potential;
     PETScWrappers::MPI::Vector poisson_rhs;
+
+    PETScWrappers::MPI::Vector Field_X; //electric field
+    PETScWrappers::MPI::Vector Field_Y;
     
     // Drift-Diffusion Vectors
     PETScWrappers::MPI::Vector old_ion_density;
     PETScWrappers::MPI::Vector ion_density;
     PETScWrappers::MPI::Vector ion_rhs;
-    PETScWrappers::MPI::Vector eta; // chi sei tu ?
+    PETScWrappers::MPI::Vector eta; 
     
 
     // NAVIER-STOKES PART
@@ -190,8 +191,7 @@ void bernoulli (double x, double &bp, double &bn);
 double side_length (const Point<2> a, const Point<2> b);
 double triangle_denom(const Point<2> a, const Point<2> b, const Point<2> c);
 Tensor<1,2> face_normal(const Point<2> a, const Point<2> b);
-FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31, const double D);
-// l'originale era un po diversa perche non dava come input D
+FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31);
 
 // HELPER FUNCTION FOR THRUST COMPUTATION
 Tensor<1,2> get_emitter_normal(const Point<2> a) ;
@@ -202,14 +202,10 @@ Tensor<1,2> get_emitter_normal(const Point<2> a) ;
 //NB: la struttura del preconditioner blockshur che abbiamo usato nel nostro NS è diversa da quella del problema completo originale
 //    verificare che siano compatibili
 
-//NB: bisogna riscrivere le funzionio Electrical Values perchè sono settate per una geometria rettangolare
-
-//NB: il nostro CollectoGeometry è diverso ma penso sia ok, menessini passava il segno per descrivere i due profili della naca
-//    noi passiamo tutti i punti
-
 //NB: ATTENZIONE ai tag delle bcs ! noi in teoria abbiamo 1-2-3-4 inlet outlet emi coll!!
 
-//NB: adattare al codice in modo tale che le costanti siano prese dalla data struct
+//NB: adattare al codice in modo tale che le costanti siano prese dalla data struct, parte elettrica dovrebbe essere okk
+//    inoltre bisogna fare la computazione di quelle non immediate e chiamare le costanti dal m_data della classe nei vari metodi
 
 //NB: scorri lungo i metodi per vedere i commenti, alcuni metodi neccessitano di una messa a punto
 //    in modo da essere compatibili per un codice parallelo
