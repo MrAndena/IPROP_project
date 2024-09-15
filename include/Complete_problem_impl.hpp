@@ -51,7 +51,7 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
 
     // DYNAMIC SPARSITY PATTERN AND POISSON MATRICES 
     DynamicSparsityPattern dsp(locally_relevant_dofs);
-    DoFTools::make_sparsity_pattern(dof_handler, dsp, zero_constraints, false); 
+    DoFTools::make_sparsity_pattern(dof_handler, dsp, zero_constraints_poisson, false); 
     SparsityTools::distribute_sparsity_pattern(dsp,
                                                dof_handler.locally_owned_dofs(),
                                                mpi_communicator,
@@ -70,10 +70,10 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
 }
 //----------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void CompleateProblem<dim>::initialize_potential()
+void CompleteProblem<dim>::initialize_potential()
 { 
   // fix the constants
-  const double Re = m_data.geometrical_parameters.emitter_radius; // per adesso un singolo valore
+  const double Re = m_data.geometrical_parameters.emitter_radius[simulation_tag]; // per adesso un singolo valore
   const double E_ON = m_data.drift_diffusion.physical_parameters.E_ON;
   const double Ve = m_data.drift_diffusion.physical_parameters.Ve;
 
@@ -262,7 +262,7 @@ void CompleteProblem<dim>::setup_drift_diffusion(const bool reinitialize_densiti
 	ion_system_matrix.clear();
   ion_system_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_communicator); 
 	
-  drifti_diffusion_matrix.clear();
+  drift_diffusion_matrix.clear();
   drift_diffusion_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_communicator); 
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -357,7 +357,7 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
 
   
     // BUILDING SYSTEM RHS
-    poisson_system_rhs = 0;
+    poisson_rhs = 0;
 
     PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator); //temporary non-ghosted vector number 1
     mass_matrix_poisson.vmult(temp,eta);
@@ -397,6 +397,8 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
     //Compute the residual before the clamping
     double residual = poisson_newton_update.linfty_norm();
 
+    V_TH = m_data.drift_diffusion.physical_parameters.V_TH
+
     //Clamping 
     for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
   
@@ -430,7 +432,7 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
 }
 //--------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>  // a che serve fare solve di questo ??? sono giuste le imposizioni delle bcs?
-void CompleateProblem<dim>::solve_homogeneous_poisson()
+void CompleteProblem<dim>::solve_homogeneous_poisson()
 {
 
 	VectorTools::interpolate(mapping,dof_handler, Functions::ZeroFunction<dim>(), poisson_rhs);
@@ -590,7 +592,7 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
                                 const double En = std::sqrt(Evec[0]*Evec[0] + Evec[1]*Evec[1]);
 
                                 // CHECK
-                                if (std::isnan(En) || En <0.) cout << "WARNING! Scalar product is " << En << " in " << face->center() << endl;
+                                if (std::isnan(En) || En <0.) pcout << "WARNING! Scalar product is " << En << " in " << face->center() << std::endl;
 
                                 for (unsigned int j = 0; j < vertices_per_cell; ++j) {
                                         Robin(i,j) += face_values.JxW(q) * face_values.shape_value(i,q) * face_values.shape_value(j,q) * (Vh + mu * En);
@@ -607,6 +609,8 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
             const Point<dim> v2 = cell->vertex(3); // top right
             const Point<dim> v3 = cell->vertex(0); // bottom left
             const Point<dim> v4 = cell->vertex(1); // bottom right
+
+            V_TH = m_data.drift_diffusion.physical_parameters.V_TH
 
             const double u1 = -potential[local_dof_indices[2]]/V_TH;
             const double u2 = -potential[local_dof_indices[3]]/V_TH;
@@ -717,7 +721,7 @@ void CompleteProblem<dim>::solve_drift_diffusion()
   PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
   SolverControl sc_ion(dof_handler.n_dofs(), 1e-10);
   PETScWrappers::SparseDirectMUMPS solverMUMPS_ion(sc_ion); 
-  solverMUMPS_hole.solve(ion_system_matrix, temp, ion_rhs);
+  solverMUMPS_ion.solve(ion_system_matrix, temp, ion_rhs);
 
   ion_constraints.distribute(temp); // qua constraints per le ions (paragona a nostro DD)
   temp.compress(VectorOperation::insert);
@@ -956,7 +960,7 @@ void CompleteProblem<dim>::setup_NS()
     pressure_mass_matrix.clear(); 
 
     NS_system_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
-    NS_solution.reinit(owned_partitioning, relevant_partitioning mpi_communicator);
+    NS_solution.reinit(owned_partitioning, relevant_partitioning, mpi_communicator);
     NS_solution_update.reinit(owned_partitioning, mpi_communicator);
     NS_system_rhs.reinit(owned_partitioning, mpi_communicator);
 
@@ -981,10 +985,13 @@ void CompleteProblem<dim>::setup_NS()
     //??Farlo ereditare anche a Vel_X e Vel_Y ??
 
 
+    owned_partitioning_u = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      
+    owned_partitioning_p = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
+
     //????
-    Vel_X.reinit(owned_partitioning, mpi_communicator);
-    Vel_Y.reinit(owned_partitioning, mpi_communicator);
-    pressure.reinit(owned_partitioning, mpi_communicator);
+    Vel_X.reinit(owned_partitioning_u, mpi_communicator);
+    Vel_Y.reinit(owned_partitioning_u, mpi_communicator);
+    pressure.reinit(owned_partitioning_p, mpi_communicator);
   }
 
 
@@ -1035,6 +1042,12 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
   std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
   std::vector<double> phi_p(dofs_per_cell);
 
+  auto ion_cell = dof_handler.begin_active();          
+  const auto ion_endc = dof_handler.end();
+  std::vector<types::global_dof_index> ion_local_dof_indices(4);
+
+  Tensor<1,dim> f;
+
   for (auto cell = dof_handler.begin_active(); cell != dof_handler.end(); ++cell)     //Iterator from the first active cell to the last one
   {
       if (cell->is_locally_owned())
@@ -1048,16 +1061,16 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
           }
           local_rhs = 0;
 
-          fe_values[velocities].get_function_values(present_solution,
-                                                  current_velocity_values);     //in current_velocity_values i stored values of present_solution in quadrature points
+          fe_values[velocities].get_function_values(NS_solution,
+                                                  current_velocity_values);     //in current_velocity_values i stored values of NS_solution in quadrature points
 
           fe_values[velocities].get_function_gradients(
-                          present_solution, current_velocity_gradients);
+                          NS_solution, current_velocity_gradients);
 
           fe_values[velocities].get_function_divergences(
-                          present_solution, current_velocity_divergences);
+                          NS_solution, current_velocity_divergences);
 
-          fe_values[pressure].get_function_values(present_solution,
+          fe_values[pressure].get_function_values(NS_solution,
                                                   current_pressure_values);
 
           // Assemble the system matrix and mass matrix simultaneouly.
@@ -1096,6 +1109,12 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
                   fe_values.JxW(q);
                 }
               }
+
+              q0 = m_data.drift_diffusion.physical_parameters.q0
+
+              // const double rho = stratosphere ? 0.089 : 1.225; // kg m^-3
+
+              rho = 1.225; // kg m^-3  //Attenzione: buono solo se non nella stratosphere
 
               if (ion_cell != ion_endc && i < 12) {
                 double E_x,E_y,ions;
@@ -1155,12 +1174,14 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
 {
     if (assemble_system)
     {
-        preconditioner.reset(new BlockSchurPreconditioner(timer,
-                                                        NS_struct,
-                                                        owned_partitioning,
-                                                        NS_system_matrix,
-                                                        NS_mass_matrix,
-                                                        pressure_mass_matrix));
+      preconditioner.reset(new BlockSchurPreconditioner(timer,
+                                                      gamma,
+                                                      viscosity,
+                                                      time.get_delta_t(),
+                                                      owned_partitioning,
+                                                      NS_system_matrix,
+                                                      NS_mass_matrix,
+                                                      pressure_mass_schur));
     }
     
     double coeff = 0.0 ;   // to avoid to have a tolerance too small
@@ -1177,8 +1198,8 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
 
     SolverBicgstab<PETScWrappers::MPI::BlockVector> bicg(solver_control);
 
-    pcout << "system_matrix frob norm is " << system_matrix.frobenius_norm() << std::endl;
-    pcout << "system_rhs l2 norm is " << system_rhs.l2_norm() << std::endl;
+    pcout << "NS_system_matrix frob norm is " << NS_system_matrix.frobenius_norm() << std::endl;
+    pcout << "NS_system_rhs l2 norm is " << NS_system_rhs.l2_norm() << std::endl;
     // The solution vector must be non-ghosted
     bicg.solve(NS_system_matrix, NS_solution_update, NS_system_rhs, *preconditioner);
 
@@ -1197,7 +1218,7 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
 template <int dim>
 void CompleteProblem<dim>::solve_navier_stokes()
 {
-	evaluate_electric_field();   //Serve ad assembly_NS, prende valori dalla parte elettrica utili per NS 
+	evaluate_electric_field();   //Serve ad assembly_NS, crea Field_X e Field_Y
 
 	std::cout << "Solving Navier Stokes... " << std::endl;
 
@@ -1236,16 +1257,16 @@ void CompleteProblem<dim>::solve_navier_stokes()
   pcout << std::scientific << std::left << " GMRES_ITR = " << std::setw(3)
       << state.first << " GMRES_RES = " << state.second << std::endl;
 
-  pcout << "L2 norm of the present solution: " << present_solution.l2_norm() << std::endl;
+  pcout << "L2 norm of the present solution: " << NS_solution.l2_norm() << std::endl;
 
 
-
+  //Ho ottenuto la nuova soluzione di NS, spezziamola ora per essere usata dalla parte elettrica
 
 
   //Questa parte con Vel_X e Y capire se effettivamnete crearli, per pressure possiamo accedervi in modo più intelligente essendo il 
   //secondo blocco come avevamo fatto anche noi in passato. Il problema è che vengono usati Vel_X e Y in DD. Sicurametne c'è modo più intelligente per accedervi
 
-	cout << "Recovering velocity and pressure values for output... " << endl;
+	pcout << "Recovering velocity and pressure values for output... " << std::endl;
 
 	Vel_X.reinit(dof_handler.n_dofs());
 	Vel_Y.reinit(dof_handler.n_dofs());
@@ -1256,7 +1277,7 @@ void CompleteProblem<dim>::solve_navier_stokes()
 	const unsigned int dofs_per_NS_cell = 22;
 	std::vector<types::global_dof_index> NS_local_dof_indices(dofs_per_NS_cell);
 
-	auto cell = dof_handler.begin_active();
+	auto cell = dof_handler.begin_active();    //Numero dof tra DD (ordine 1) e NS (ordine velocità e pressione diversi) sono diversi
 	auto NS_cell = NS_dof_handler.begin_active();
 
 	const auto endc = dof_handler.end();
@@ -1327,10 +1348,10 @@ void CompleteProblem<dim>::run()
                                                               // nel codice originale, false, non viene mai messo
 
   pcout << "   INITIALIZE OLD_ION_DENSITY ... "<< std::endl;
-	VectorTools::interpolate(mapping, dof_handle, Functions::ConstantFunction<dim>(N_0), old_ion_density); //N_0 deriva da stratosphere bool
+	VectorTools::interpolate(mapping, dof_handler , Functions::ConstantFunction<dim>(N_0), old_ion_density); //N_0 deriva da stratosphere bool
   
   pcout << "   SETUP NAVIER STOKES PROBLEM ... "<< std::endl;
-	setup_navier_stokes();
+	setup_NS();
   
   pcout << "   STORE INITIAL CONDITIONS ... "<< std::endl;
 	output_results(0);
@@ -1347,7 +1368,7 @@ void CompleteProblem<dim>::run()
 	double time_err = 1. + time_tol;
 
 
-  pcout << "   START COMPLEATE PROBLEM ... "<< std::endl;
+  pcout << "   START COMPLETE PROBLEM ... "<< std::endl;
 
 	while (step_number < max_steps && time_err > time_tol)
 	  {

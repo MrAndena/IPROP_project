@@ -3,8 +3,9 @@
 #include "NACA_points_generator.hpp"
 #include "gmsh_runner.hpp"
 #include "InsIMEX.hpp"
-#include "CollectorGeometryNS.hpp"
+// #include "CollectorGeometryNS.hpp"
 #include "PoissonProblem.h"
+#include "Complete_problem.hpp"
 
 int main(int argc, char** argv){
 
@@ -118,7 +119,7 @@ int main(int argc, char** argv){
 
                                         create_triangulation(tria, my_data, i);
 
-                                        Complete_problem<2> problem(tria, my_data.??, i);
+                                        CompleteProblem<2> problem(tria, my_data, i);
 
                                         problem.run();
                                         }

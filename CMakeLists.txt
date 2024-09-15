@@ -17,13 +17,29 @@ IF(NOT ${deal.II_FOUND})
   )
 ENDIF()
 
+
+
+# # Gmsh
+# find_program(GMSH_EXECUTABLE NAMES gmsh) 
+
+# # If Gmsh is not found, print an error message and stop
+# if(NOT GMSH_EXECUTABLE)
+#     message(FATAL_ERROR "Gmsh executable not found. Please install Gmsh or set the GMSH_EXECUTABLE variable manually.")
+# endif()
+
+
+# Set the path to the Gmsh executable manually
+set(GMSH_EXECUTABLE "/home/giacomo/Lavoro/gmsh-4.11.1-Linux64/bin/gmsh")
+
 # Gmsh
-find_program(GMSH_EXECUTABLE NAMES gmsh) 
+find_program(GMSH_EXECUTABLE NAMES gmsh PATHS ${GMSH_EXECUTABLE})
 
 # If Gmsh is not found, print an error message and stop
 if(NOT GMSH_EXECUTABLE)
     message(FATAL_ERROR "Gmsh executable not found. Please install Gmsh or set the GMSH_EXECUTABLE variable manually.")
 endif()
+
+
 
 # Ensure deal.II is correctly configured
 IF(NOT DEAL_II_WITH_PETSC OR NOT DEAL_II_WITH_P4EST OR DEAL_II_PETSC_WITH_COMPLEX)

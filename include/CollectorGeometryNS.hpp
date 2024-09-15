@@ -103,7 +103,7 @@ class CollectorGeometry : public ChartManifold<dim, dim, dim-1>     //ChartManif
 public:
   virtual Point<dim-1> pull_back(const Point<dim> &space_point) const override;        //Pull back the given point in spacedim to the Euclidean chartdim dimensional space
 
-  // virtual Point<dim> push_forward(const Point<dim-1> &chart_point) const override;     //serve?
+  Point<dim> push_forward(const Point<dim-1> &chart_point) const override;     //serve per non rendere la classe virtuale
   Point<dim> push_forward(const Point<dim-1> &chart_point, const data_struct& s_data) const; 
   
   virtual std::unique_ptr<Manifold<dim, dim>> clone() const override;                  //Return a copy of this manifold
@@ -116,7 +116,7 @@ std::unique_ptr<Manifold<dim, dim>> CollectorGeometry<dim>::clone() const
 return std::make_unique<CollectorGeometry<dim>>();
   }
 
-/*
+// Serve se no CollectorGeometry è una virtual class
 template <int dim>
 Point<dim> CollectorGeometry<dim>::push_forward(const Point<dim-1>  &x) const          //Input: a chart point that in our case is a 1D point 
 {
@@ -130,7 +130,7 @@ Point<dim> CollectorGeometry<dim>::push_forward(const Point<dim-1>  &x) const   
   // }
 
   return p;                                                                              //Output: a point of our collector in 2D 
-}*/
+}
 
 template <int dim>
 Point<dim> CollectorGeometry<dim>::push_forward(const Point<dim-1>  &x, const data_struct& s_data) const          //Input: a chart point that in our case is a 1D point 

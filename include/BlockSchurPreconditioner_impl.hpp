@@ -8,15 +8,17 @@
   // temporary block vectors inside.
   BlockSchurPreconditioner::BlockSchurPreconditioner(
     TimerOutput &timer,
-    const NavierStokes& NS,
+    double gamma,
+    double viscosity,
+    double dt,
     const std::vector<IndexSet> &owned_partitioning,        //Partitioning informations
     const PETScWrappers::MPI::BlockSparseMatrix &system,
     const PETScWrappers::MPI::BlockSparseMatrix &mass,
     PETScWrappers::MPI::BlockSparseMatrix &schur)
     : timer(timer),
-      gamma(NS.physical_parameters.gamma),
-      viscosity(NS.physical_parameters.viscosity),
-      dt(NS.numerical_parameters.delta_t),
+      gamma(gamma),
+      viscosity(viscosity),
+      dt(dt),
       system_matrix(&system),
       mass_matrix(&mass),
       mass_schur(&schur)

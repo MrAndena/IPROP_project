@@ -49,7 +49,7 @@ class CompleteProblem
 
 public:
 
-    CompleteProblem(parallel::distributed::Triangulation<dim> &tria, const data_struct &d,unsigned short int i);
+    CompleteProblem(parallel::distributed::Triangulation<dim> &tria, const data_struct &d, unsigned short int i);
 
     void run(); // ha senso mettere tolleranze qua ?
 
@@ -72,9 +72,9 @@ private:
     void perform_drift_diffusion_fixed_point_iteration_step();  // this method update ion_density
 
     
-    void CompleteProblem<dim>::setup_NS();
-    void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints, bool assemble_system);
-    std::pair<unsigned int, double> CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step);
+    void setup_NS();
+    void assemble_NS(bool use_nonzero_constraints, bool assemble_system);
+    std::pair<unsigned int, double> solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step);
     void solve_navier_stokes();
     // void estimate_thrust();
 
@@ -176,6 +176,9 @@ private:
     std::shared_ptr<BlockSchurPreconditioner> preconditioner; // non c'era nell'originale complete problem
     std::vector<IndexSet> owned_partitioning;                //  non c'era nell'originale complete problem
     std::vector<IndexSet> relevant_partitioning;             // non c'era nell'originale complete problem
+
+    IndexSet owned_partitioning_u;
+    IndexSet owned_partitioning_p;
 
     
     // Step and Timestep

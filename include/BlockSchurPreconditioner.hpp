@@ -91,8 +91,11 @@ using namespace dealii;
 class BlockSchurPreconditioner : public Subscriptor
 {
 public:
-  BlockSchurPreconditioner( TimerOutput &timer,      
-    const NavierStokes& NS,
+  BlockSchurPreconditioner(
+    TimerOutput &timer,      
+    double gamma,
+    double viscosity,
+    double dt, 
     const std::vector<IndexSet> &owned_partitioning,
     const PETScWrappers::MPI::BlockSparseMatrix &system,
     const PETScWrappers::MPI::BlockSparseMatrix &mass,
@@ -107,7 +110,8 @@ private:
   const double viscosity;
   const double dt;
 
-  const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix> system_matrix;
+  const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix>
+    system_matrix;
   const SmartPointer<const PETScWrappers::MPI::BlockSparseMatrix> mass_matrix;
   // As discussed, ${[B(diag(M_u))^{-1}B^T]}$ and its inverse
   // need to be computed.
