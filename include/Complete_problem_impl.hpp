@@ -12,7 +12,9 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
   , fe(1) //fe for poisson / DD
   , dof_handler(tria) //dof h for poisson / DD
   , mapping() // mapping for poisson / DD
-  , timestep(1.e-5) // vogliamo passare uno dalla struct ? è diverso da NS
+  , timestep(1.e-5) // vogliamo passare uno dalla struct ? è diverso da NS 
+  , time_NS(d.navier_stokes) // come in INSIMEX
+  , timer(mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
   ,	viscosity(d.navier_stokes.physical_parameters.viscosity)
   , gamma(d.navier_stokes.physical_parameters.gamma) 
   , degree(d.navier_stokes.numerical_parameters.FE_degree) 
@@ -397,7 +399,7 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
     //Compute the residual before the clamping
     double residual = poisson_newton_update.linfty_norm();
 
-    V_TH = m_data.drift_diffusion.physical_parameters.V_TH
+    const double V_TH = m_data.drift_diffusion.physical_parameters.V_TH;
 
     //Clamping 
     for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
@@ -610,7 +612,7 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
             const Point<dim> v3 = cell->vertex(0); // bottom left
             const Point<dim> v4 = cell->vertex(1); // bottom right
 
-            V_TH = m_data.drift_diffusion.physical_parameters.V_TH
+            const double V_TH = m_data.drift_diffusion.physical_parameters.V_TH;
 
             const double u1 = -potential[local_dof_indices[2]]/V_TH;
             const double u2 = -potential[local_dof_indices[3]]/V_TH;
@@ -652,10 +654,10 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
                         const double alpha23 = (u_f_2 * dir_23)/D*l_23 + (u3 - u2);
 
                         // Triangle A:
-                        A= compute_triangle_matrix(v2,v1,v3, alpha21, alpha13, -alpha23);
+                        A= compute_triangle_matrix(v2,v1,v3, alpha21, alpha13, -alpha23, this->m_data);
 
                         // Triangle B:
-                        B = compute_triangle_matrix(v3,v4,v2, alpha34, alpha42, alpha23);
+                        B = compute_triangle_matrix(v3,v4,v2, alpha34, alpha42, alpha23, this->m_data);
 
                         // Matrix assemble
                         A_local_dof_indices[0] = local_dof_indices[3];
@@ -674,10 +676,10 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
                         const double alpha14 = (u_f_1 * dir_14)/D*l_14 + (u4 - u1);
 
                         // Triangle A:
-                        A = compute_triangle_matrix(v4,v2,v1, alpha42, alpha21, alpha14);
+                        A = compute_triangle_matrix(v4,v2,v1, alpha42, alpha21, alpha14, this->m_data);
 
                         // Triangle B:
-                        B = compute_triangle_matrix(v1,v3,v4, alpha13, alpha34, -alpha14);
+                        B = compute_triangle_matrix(v1,v3,v4, alpha13, alpha34, -alpha14, this->m_data);
 
                         A_local_dof_indices[0] = local_dof_indices[1];
                         A_local_dof_indices[1] = local_dof_indices[3];
@@ -999,7 +1001,7 @@ void CompleteProblem<dim>::setup_NS()
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
-                            bool assemble_system)
+                                       bool assemble_system)
 {
   TimerOutput::Scope timer_section(timer, "Assemble system");        //Enter the given section in the timer
 
@@ -1093,11 +1095,11 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
                 {
                   local_matrix(i, j) +=
                   (viscosity *
-                      scalar_product(grad_phi_u[j], grad_phi_u[i]) -
-                  div_phi_u[i] * phi_p[j] -
-                  phi_p[i] * div_phi_u[j] +
-                  gamma * div_phi_u[j] * div_phi_u[i] +
-                  phi_u[i] * phi_u[j] / time.get_delta_t() //+
+                   scalar_product(grad_phi_u[j], grad_phi_u[i]) -
+                   div_phi_u[i] * phi_p[j] -
+                   phi_p[i] * div_phi_u[j] +
+                   gamma * div_phi_u[j] * div_phi_u[i] +
+                   phi_u[i] * phi_u[j] / time_NS.get_delta_t() //+
 
                   // phi_u[i] * (current_velocity_gradients[q] * phi_u[j]) +
                   // phi_u[i] * (grad_phi_u[j] * current_velocity_values[q]) 
@@ -1110,11 +1112,11 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
                 }
               }
 
-              q0 = m_data.drift_diffusion.physical_parameters.q0
+              const double q0 = m_data.drift_diffusion.physical_parameters.q0;
 
               // const double rho = stratosphere ? 0.089 : 1.225; // kg m^-3
 
-              rho = 1.225; // kg m^-3  //Attenzione: buono solo se non nella stratosphere
+              const double rho = 1.225; // kg m^-3  //Attenzione: buono solo se non nella stratosphere
 
               if (ion_cell != ion_endc && i < 12) {
                 double E_x,E_y,ions;
@@ -1177,11 +1179,11 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
       preconditioner.reset(new BlockSchurPreconditioner(timer,
                                                       gamma,
                                                       viscosity,
-                                                      time.get_delta_t(),
+                                                      time_NS.get_delta_t(),
                                                       owned_partitioning,
                                                       NS_system_matrix,
                                                       NS_mass_matrix,
-                                                      pressure_mass_schur));
+                                                      pressure_mass_schur)); //pressure_mass_matrix?
     }
     
     double coeff = 0.0 ;   // to avoid to have a tolerance too small
@@ -1237,16 +1239,16 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
   NS_solution_update = 0;
   // Only use nonzero constraints at the very first time step (Così i valori nei constraints non vengono modificati)
-  bool apply_nonzero_constraints = (time.get_timestep() == 1);  //Capire se usare step_number o la classe Time
+  bool apply_nonzero_constraints = (time_NS.get_timestep() == 1);  //Capire se usare step_number o la classe Time
   
   // We have to assemble the LHS for the initial two time steps:
   // once using nonzero_constraints, once using zero_constraints.
-  bool assemble_system = (time.get_timestep() < 3);
+  bool assemble_system = (time_NS.get_timestep() < 3);
 
   assemble_NS(apply_nonzero_constraints, assemble_system);
 
 
-  auto state = solver_NS(apply_nonzero_constraints, assemble_system, time.get_timestep());
+  auto state = solver_NS(apply_nonzero_constraints, assemble_system, time_NS.get_timestep());
   // Note we have to use a non-ghosted vector to do the addition.
   PETScWrappers::MPI::BlockVector tmp;
   tmp.reinit(owned_partitioning, mpi_communicator);   //We do this since present solution is a ghost vector so is read-only
@@ -1268,9 +1270,30 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
 	pcout << "Recovering velocity and pressure values for output... " << std::endl;
 
+  // le tre righe commentate sotto le ho riscritte così, come nel setNS
+  std::vector<unsigned int> block_component(dim + 1, 0); 
+
+  block_component[dim] = 1;
+  DoFRenumbering::component_wise(NS_dof_handler, block_component);
+
+  dofs_per_block = DoFTools::count_dofs_per_fe_block(NS_dof_handler, block_component);
+
+  unsigned int dof_u = dofs_per_block[0];
+  unsigned int dof_p = dofs_per_block[1];
+
+  owned_partitioning_u = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      
+  owned_partitioning_p = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
+
+  //????
+  Vel_X.reinit(owned_partitioning_u, mpi_communicator);
+  Vel_Y.reinit(owned_partitioning_u, mpi_communicator);
+  pressure.reinit(owned_partitioning_p, mpi_communicator);
+  
+  /*
 	Vel_X.reinit(dof_handler.n_dofs());
 	Vel_Y.reinit(dof_handler.n_dofs());
 	pressure.reinit(dof_handler.n_dofs());
+  */
 
 	const unsigned int dofs_per_cell = 4;
 	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -1318,11 +1341,31 @@ template <int dim>
 void CompleteProblem<dim>::run()
 {
 
+  // fix the constants
+  const double Re = m_data.geometrical_parameters.emitter_radius[simulation_tag]; // per adesso un singolo valore
+  const double E_ON = m_data.drift_diffusion.physical_parameters.E_ON;
+  const double Ve = m_data.drift_diffusion.physical_parameters.Ve;
+
+  const double N_0 = m_data.drift_diffusion.physical_parameters.stratosphere ? 2.2e-3 : 0.5e-3; // [m^-3] ambient ion density 
+  const double p_amb = m_data.drift_diffusion.physical_parameters.stratosphere ? 5474 : 101325; 
+  const double T = m_data.drift_diffusion.physical_parameters.stratosphere ? 217. : 303.; // [K] fluid temperature
+  const double rho = m_data.drift_diffusion.physical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3 
+
+  const double delta = p_amb/101325*298/T; //                                       
+     
+  const double eps = 1.; // wire surface roughness correction coefficient
+  const double Ep = E_ON*delta*eps*(1+0.308/std::sqrt(Re*1.e+2*delta));
+  const double Ri = Ep/E_ON*Re; // [m] ionization radius
+  const double Vi = Ve - Ep*Re*log(Ep/E_ON); // [V] voltage on ionization region boundary
+
+
+
 	pcout << "From Peek's law:  " << std::endl;
 	pcout << "	the field at emitter surface is " << Ep*1e-6 << " [MV/m] " <<std::endl;
 	pcout << "	the ionization radius is "<< Ri*1e+3 << " [mm]" << std::endl;
 	pcout << " 	the ionization potential is " << Vi*1e-3  << " [kV]" << std::endl;
 	pcout << std::endl;
+
 
   
   pcout << "   SETUP POISSON PROBLEM ... "<< std::endl;
@@ -1430,7 +1473,7 @@ void CompleteProblem<dim>::run()
 
 	  }
 
-    pcout << " 	Elapsed CPU time: " << timer.cpu_time()/60. << " minutes.\n" << std::endl << std::endl;
+    //pcout << " 	Elapsed CPU time: " << timer.cpu_time()/60. << " minutes.\n" << std::endl << std::endl;
 
 }
 
@@ -1449,6 +1492,18 @@ void CompleteProblem<dim>::output_results(const unsigned int cycle)
     data_out.add_data_vector(Vel_Y, "Velocity_Y");
     data_out.add_data_vector(Field_X, "Field_X");
     data_out.add_data_vector(Field_Y, "Field_Y");
+
+    // Base directory for output
+    std::string base_directory = "../output/results";
+
+    // Directory to store the results of this simulation
+    std::string output_directory = base_directory + "/NS_DD_Simulation_"+std::to_string(simulation_tag)+"/";
+
+    // Ensure the output directory is created (if it doesn't exist)
+    if (!std::filesystem::exists(output_directory))
+    {
+        std::filesystem::create_directory(output_directory);
+    }
     
 
     Vector<float> subdomain(triangulation.n_active_cells());
@@ -1456,7 +1511,7 @@ void CompleteProblem<dim>::output_results(const unsigned int cycle)
       subdomain(i) = triangulation.locally_owned_subdomain();
     data_out.add_data_vector(subdomain, "subdomain");
     data_out.build_patches();
-    data_out.write_vtu_with_pvtu_record("./", "solution", cycle, mpi_communicator, 2, 1);
+    data_out.write_vtu_with_pvtu_record(output_directory, "solution", cycle, mpi_communicator, 2, 1);
 
 
   }
@@ -1577,7 +1632,7 @@ Tensor<1,2> face_normal(const Point<2> a, const Point<2> b) {
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------
 
-FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31)
+FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31, const data_struct& m_data)
 {
 	const unsigned int size = 3;
 	FullMatrix<double> tria_matrix(size,size);
@@ -1629,7 +1684,7 @@ FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, c
 	return tria_matrix;
 }
 //----------------------------------------------------------------------------------------------------------------------------------------------------
-Tensor<1,2> get_emitter_normal(const Point<2> a) { //serve per calcolare il thrust
+/*Tensor<1,2> get_emitter_normal(const Point<2> a) { //serve per calcolare il thrust
 
 	Tensor<1,2> normal;
 
@@ -1639,4 +1694,4 @@ Tensor<1,2> get_emitter_normal(const Point<2> a) { //serve per calcolare il thru
 	const double norm = std::sqrt(normal[0]*normal[0]+normal[1]*normal[1]);
 
 	return normal/norm;
-}
+}*/

@@ -185,8 +185,9 @@ private:
     unsigned int step_number = 0;
     double timestep = 0;
     
-    // Timer
-    Timer timer;
+    // Timer and Time
+    mutable TimerOutput timer;
+    Time time_NS;
 };
 
 // HELPER FUNCTIONS FOR LOCAL TRIANGLE ASSEMBLE (Drift-Diffusion)
@@ -194,7 +195,7 @@ void bernoulli (double x, double &bp, double &bn);
 double side_length (const Point<2> a, const Point<2> b);
 double triangle_denom(const Point<2> a, const Point<2> b, const Point<2> c);
 Tensor<1,2> face_normal(const Point<2> a, const Point<2> b);
-FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31);
+FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31, const data_struct& m_data);
 
 // HELPER FUNCTION FOR THRUST COMPUTATION
 Tensor<1,2> get_emitter_normal(const Point<2> a) ;
