@@ -78,7 +78,7 @@ std::vector<GmshPoint> NACA_points_generator::compute_profile() const {
 
     
     //we now compute the y coordinates of the upper and lower profile
-    for(size_t i = 0; i<n ; ++i){
+    for(int i = 0; i<n ; ++i){
 
         up_coord[i] = F_y( x_coord[i]);
         low_coord[i] = -1*up_coord[i];
@@ -92,14 +92,14 @@ std::vector<GmshPoint> NACA_points_generator::compute_profile() const {
     std::vector<GmshPoint> Points;
     Points.reserve(n -2);
 
-    for(size_t i = 0; i<n; ++i){
+    for(int i = 0; i<n; ++i){
 
         GmshPoint temp( x_coord[i] ,  up_coord[i] ,0.0, 1.0);    
         Points.push_back(temp);
 
     }
 
-    for(size_t i = n -2; i>0; --i){
+    for(int i = n -2; i>0; --i){
 
         GmshPoint temp( x_coord[i] , low_coord[i] ,0.0, 1.0);
         Points.push_back(temp);

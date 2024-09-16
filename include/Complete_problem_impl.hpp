@@ -325,12 +325,14 @@ void CompleteProblem<dim>::assemble_drift_diffusion_mass_matrix()
 
 template <int dim>
 void CompleteProblem<dim>::assemble_nonlinear_poisson()
-  {
-    //fix the constants
+  { 
+    // Fix the constants
     const double q0 = m_data.drift_diffusion.physical_parameters.q0;
     const double eps_r = m_data.drift_diffusion.physical_parameters.eps_r;
     const double eps_0 = m_data.drift_diffusion.physical_parameters.eps_0;
-    const double V_TH = m_data.drift_diffusion.physical_parameters.V_TH;
+    const double kB = m_data.drift_diffusion.physical_parameters.kB;
+    const double T = m_data.drift_diffusion.physical_parameters.stratosphere ? 217. : 303.; 
+    const double V_TH = kB*T/q0;
 
     //BUILDING POISSON SYSTEM MATRIX (for newton)
     system_matrix_poisson = 0;
@@ -338,8 +340,7 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
 
     double new_value = 0;
   
-    // generate the term:  (eta)*MASS_MAT   lumped version stored in ion_mass_matrix
-
+    // Generate the term:  (eta)*MASS_MAT   lumped version stored in ion_mass_matrix
     for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
 
       new_value = mass_matrix_poisson(*iter, *iter) * eta(*iter);
@@ -348,17 +349,10 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
     }
 
     ion_mass_matrix.compress(VectorOperation::insert);
-    //bisognerà mettere le bcs per la ion mass?????
-  
-    //pcout << "   The L_INF norm of the density matrix is: "<<density_matrix.linfty_norm() <<std::endl;
-    //pcout << "   The L_FROB norm of the density matrix is: "<<density_matrix.frobenius_norm() <<std::endl<<std::endl;
+    //bisognerà mettere le bcs per la ion mass?????????????
 
     system_matrix_poisson.add(eps_r * eps_0, laplace_matrix_poisson); // SYS_MAT = SYS_MAT +  eps*A
     system_matrix_poisson.add(q0 / V_TH, ion_mass_matrix);     // SYS_MAT = SYS_MAT + q0/V_TH * (eta)*MASS_MAT
-
-
-    //pcout << "   The L_INF norm of the poisson system matrix is: "<<poisson_system_matrix.linfty_norm() <<std::endl;
-    //pcout << "   The L_FROB norm of the poisson system matrix is: "<<poisson_system_matrix.frobenius_norm() <<std::endl<<std::endl;
 
   
     // BUILDING SYSTEM RHS
@@ -380,7 +374,13 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
   //----------------------------------------------------------------------------------------------------------------------------
   template <int dim>
   double CompleteProblem<dim>::solve_poisson()
-  {
+  { 
+
+    // Fixing costants
+    const double q0 = m_data.drift_diffusion.physical_parameters.q0;
+    const double kB = m_data.drift_diffusion.physical_parameters.kB;
+    const double T = m_data.drift_diffusion.physical_parameters.stratosphere ? 217. : 303.; 
+    const double V_TH = kB*T/q0;
 
     //Apply zero boundary conditions to the whole newton poisson system
     //We apply the BCs on tags 3 (emitter) and 4 (collector)
@@ -402,8 +402,6 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
     //Compute the residual before the clamping
     double residual = poisson_newton_update.linfty_norm();
 
-    const double V_TH = m_data.drift_diffusion.physical_parameters.V_TH;
-
     //Clamping 
     for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
   
@@ -413,8 +411,10 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
       eta[*iter] *= std::exp(-poisson_newton_update[*iter]/V_TH); // aggiorno qua le cariche, non serve update charge
       
     }
+   
 
-    poisson_newton_update.compress(VectorOperation::insert); 
+    poisson_newton_update.compress(VectorOperation::insert);
+    eta.compress(VectorOperation::insert);
     
     ion_constraints.distribute(eta);  
     eta.compress(VectorOperation::insert); 
@@ -443,7 +443,10 @@ void CompleteProblem<dim>::solve_homogeneous_poisson()
 	VectorTools::interpolate(mapping,dof_handler, Functions::ZeroFunction<dim>(), poisson_rhs);
 	system_matrix_poisson.copy_from(laplace_matrix_poisson);
 
-	//constraints_poisson.condense(system_matrix_poisson,poisson_rhs);
+	//constraints_poisson.condense(system_matrix_poisson,poisson_rhs); vogliamo Vi su emitter e zero su collecotr
+  // seguendo il nostro percorso, mettiamo comuqnue tutto a zero
+  //se noi inizializziamo il potentiale con le BCs giuste, e poi newton invece ha BCs nulla e aggiungiamo lui
+  // al potenziale, abbiamo bisogno di questo homo??
 	
   std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
 
@@ -475,17 +478,17 @@ void CompleteProblem<dim>::solve_nonlinear_poisson(const unsigned int max_iter_n
 
   double increment_norm = std::numeric_limits<double>::max(); // the increment norm is + inf
 
-  pcout << "   Initial Newton Increment Norm dphi: " << increment_norm << std::endl<<std::endl;
+  pcout << "   Initial Newton Increment Norm dphi: " << increment_norm << std::endl; 
   
 
   while(counter < max_iter_newton && increment_norm > toll_newton){
 
     pcout << "   NEWTON ITERATION NUMBER: "<< counter +1<<std::endl;
-    pcout << "   Assemble System Poisson Matrix"<< std::endl;
+    pcout << "   Assemble System Poisson Matrix"<< std::endl; 
 
     //NB: Mass and Laplace matrices are already build
     
-    assemble_nonlinear_poisson();     
+    assemble_nonlinear_poisson();
     increment_norm = solve_poisson();  //residual computation, clamping on newton update, BCs and update of the charges are inside this method  
     
     pcout << "   Update Increment: "<<increment_norm<<std::endl<<std::endl;
@@ -843,6 +846,7 @@ void CompleteProblem<dim>::evaluate_electric_field()
 template <int dim>
 void CompleteProblem<dim>::setup_NS()
   {
+
     //SET UP DOFS
     NS_dof_handler.distribute_dofs(NS_fe);
 	  DoFRenumbering::Cuthill_McKee(NS_dof_handler);  //Renumber the degrees of freedom according to the Cuthill-McKee method.
@@ -866,48 +870,52 @@ void CompleteProblem<dim>::setup_NS()
     relevant_partitioning[0] = locally_relevant_dofs.get_view(0, dof_u);
     relevant_partitioning[1] = locally_relevant_dofs.get_view(dof_u, dof_u + dof_p);
 
-
-
+   
     //MAKE CONSTRAINTS
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar vertical_velocity(1);
     const FEValuesExtractors::Vector vertical_velocity_and_pressure(1);
-    
+
     nonzero_NS_constraints.clear();
-    nonzero_NS_constraints.reinit(locally_relevant_dofs);     
+    nonzero_NS_constraints.reinit(locally_relevant_dofs); 
+
     
     DoFTools::make_hanging_node_constraints(NS_dof_handler, nonzero_NS_constraints);  //Lo lasciamo nel caso si faccia refine mesh adattivo
     VectorTools::interpolate_boundary_values(NS_dof_handler,                           
                                             0,                                      // Up and down 
                                             Functions::ZeroFunction<dim>(dim+1),    // For each degree of freedom at the boundary, its boundary value will be overwritten if its index already exists in boundary_values. Otherwise, a new entry with proper index and boundary value for this degree of freedom will be inserted into boundary_values.
                                             nonzero_NS_constraints,
-                                            fe.component_mask(vertical_velocity));
+                                            NS_fe.component_mask(vertical_velocity));
+
+
     VectorTools::interpolate_boundary_values(NS_dof_handler,
                                             3,                                      //Emitter                  
                                             Functions::ZeroFunction<dim>(dim+1),
                                             nonzero_NS_constraints,
-                                            fe.component_mask(velocities));
+                                            NS_fe.component_mask(velocities));
+                                            
     VectorTools::interpolate_boundary_values(NS_dof_handler,
                                             4,                                      //Collector                                     
                                             Functions::ZeroFunction<dim>(dim+1),
                                             nonzero_NS_constraints,
-                                            fe.component_mask(velocities));
+                                            NS_fe.component_mask(velocities));
+                                            
     VectorTools::interpolate_boundary_values(NS_dof_handler, 
                                             1,                    // Inlet
                                             BoundaryValues<dim>(), // Functions::ZeroFunction<dim>(dim+1), 
                                             nonzero_NS_constraints, 
-                                            fe.component_mask(velocities));
-    
-
+                                            NS_fe.component_mask(velocities));
+                                            
+  
     VectorTools::interpolate_boundary_values(NS_dof_handler,
                                             2,                    // Outlet
                                             Functions::ZeroFunction<dim>(dim+1),//BoundaryValues<dim>()
                                             nonzero_NS_constraints,
-                                            fe.component_mask(vertical_velocity_and_pressure));  //Vertical velocity and pressure at outlet equal to 0
+                                            NS_fe.component_mask(vertical_velocity_and_pressure));  //Vertical velocity and pressure at outlet equal to 0
+                              
     
     nonzero_NS_constraints.close();
-
-
+    
     
     zero_NS_constraints.clear();                // The IndexSets of owned velocity and pressure respectively.
 	  zero_NS_constraints.reinit(locally_relevant_dofs);
@@ -918,27 +926,27 @@ void CompleteProblem<dim>::setup_NS()
                                             0,
                                             Functions::ZeroFunction<dim>(dim+1),
                                             zero_NS_constraints,
-                                            fe.component_mask(vertical_velocity));
+                                            NS_fe.component_mask(vertical_velocity));
     VectorTools::interpolate_boundary_values(NS_dof_handler,
                                             3,
                                             Functions::ZeroFunction<dim>(dim+1),
                                             zero_NS_constraints,
-                                            fe.component_mask(velocities));
+                                            NS_fe.component_mask(velocities));
     VectorTools::interpolate_boundary_values(NS_dof_handler,
                                             4,
                                             Functions::ZeroFunction<dim>(dim+1),
                                             zero_NS_constraints,
-                                            fe.component_mask(velocities));
+                                            NS_fe.component_mask(velocities));
     VectorTools::interpolate_boundary_values(NS_dof_handler,
                                             1,
                                             Functions::ZeroFunction<dim>(dim+1),
                                             zero_NS_constraints,
-                                            fe.component_mask(velocities));
+                                            NS_fe.component_mask(velocities));
     VectorTools::interpolate_boundary_values(NS_dof_handler,
                                             2, 
                                             Functions::ZeroFunction<dim>(dim+1),
                                             zero_NS_constraints,
-                                            fe.component_mask(vertical_velocity_and_pressure));
+                                            NS_fe.component_mask(vertical_velocity_and_pressure));
     
     zero_NS_constraints.close();
 
@@ -948,26 +956,26 @@ void CompleteProblem<dim>::setup_NS()
       << "   Number of degrees of freedom: " << NS_dof_handler.n_dofs() << " ("
       << dof_u << '+' << dof_p << ')' << std::endl;
 
-
     
     //INITIALIZE SYSTEM
-
-
     
     BlockDynamicSparsityPattern dsp(dofs_per_block, dofs_per_block);
     DoFTools::make_sparsity_pattern(NS_dof_handler, dsp, nonzero_NS_constraints);
     NS_sparsity_pattern.copy_from(dsp);
     SparsityTools::distribute_sparsity_pattern(dsp, NS_dof_handler.locally_owned_dofs(), mpi_communicator, locally_relevant_dofs); 
+
     
     preconditioner.reset();
     NS_system_matrix.clear();
     NS_mass_matrix.clear();
     pressure_mass_matrix.clear(); 
 
+
     NS_system_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
     NS_solution.reinit(owned_partitioning, relevant_partitioning, mpi_communicator);
     NS_solution_update.reinit(owned_partitioning, mpi_communicator);
     NS_system_rhs.reinit(owned_partitioning, mpi_communicator);
+
 
     NS_mass_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
 
@@ -979,24 +987,28 @@ void CompleteProblem<dim>::setup_NS()
     pressure_mass_matrix.reinit(owned_partitioning, schur_dsp, mpi_communicator);       //We want to reinitialize our matrix with new partitions of data
 
 
-    //Initialize the NS_solution
-    MappingQ1<dim>  mapping; 
+    //Initialize the NS_solution 
     PETScWrappers::MPI::BlockVector tmp1;
     tmp1.reinit(owned_partitioning, mpi_communicator);
     tmp1 = NS_solution;
-    VectorTools::interpolate(mapping, dof_handler, Functions::ZeroFunction<dim>(dim+1), tmp1);   //Zero initial solution
+    VectorTools::interpolate(NS_mapping, NS_dof_handler, Functions::ZeroFunction<dim>(dim+1), tmp1);   //Zero initial solution
     NS_solution = tmp1;
+
 
     //??Farlo ereditare anche a Vel_X e Vel_Y ??
 
-
+    // questo non dorvrebbe servire
     owned_partitioning_u = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      
     owned_partitioning_p = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
+    
+    locally_owned_dofs = dof_handler.locally_owned_dofs();                           //local dofs
+    locally_relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_handler);    //local dofs + ghost dofs
 
-    //????
-    Vel_X.reinit(owned_partitioning_u, mpi_communicator);
-    Vel_Y.reinit(owned_partitioning_u, mpi_communicator);
-    pressure.reinit(owned_partitioning_p, mpi_communicator);
+    //forse Vel X e Y vanno inizializzate con i dof di DD perchè sono scalari ( se no da anche problemi con output)
+    Vel_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+    Vel_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+    pressure.reinit(owned_partitioning_p, mpi_communicator); // lui non da problemi in output, inizializzartlo come VelX e Y??
+  
   }
 
 
@@ -1363,8 +1375,8 @@ void CompleteProblem<dim>::run()
   const double Vi = Ve - Ep*Re*log(Ep/E_ON); // [V] voltage on ionization region boundary
 
 
-
-	pcout << "From Peek's law:  " << std::endl;
+  pcout << std::endl;
+	pcout << "From Peek's law:  " << std::endl<<std::endl;
 	pcout << "	the field at emitter surface is " << Ep*1e-6 << " [MV/m] " <<std::endl;
 	pcout << "	the ionization radius is "<< Ri*1e+3 << " [mm]" << std::endl;
 	pcout << " 	the ionization potential is " << Vi*1e-3  << " [kV]" << std::endl;
@@ -1383,8 +1395,6 @@ void CompleteProblem<dim>::run()
   assemble_poisson_laplace_matrix();
   assemble_poisson_mass_matrix();
 
-  pcout << "   ASSEMBLE MASS DRIFT DIFFUSION MATRIX ... "<< std::endl;
-  assemble_drift_diffusion_mass_matrix();
 
   pcout << "   INITIALIZE POTENTIAL ... "<< std::endl;
   initialize_potential();
@@ -1393,14 +1403,20 @@ void CompleteProblem<dim>::run()
   pcout << "   SETUP DRIFT-DIFFUSION PROBLEM ... "<< std::endl;
 	setup_drift_diffusion(/*re-initialize densities = */ true); // sta cosa del bool dentro è strana
                                                               // nel codice originale, false, non viene mai messo
+  
+  pcout << "   ASSEMBLE MASS DRIFT DIFFUSION MATRIX ... "<< std::endl;
+  assemble_drift_diffusion_mass_matrix();
+
 
   pcout << "   INITIALIZE OLD_ION_DENSITY ... "<< std::endl;
 	VectorTools::interpolate(mapping, dof_handler , Functions::ConstantFunction<dim>(N_0), old_ion_density); //N_0 deriva da stratosphere bool
   
+
   pcout << "   SETUP NAVIER STOKES PROBLEM ... "<< std::endl;
 	setup_NS();
   
-  pcout << "   STORE INITIAL CONDITIONS ... "<< std::endl;
+
+  pcout << "   STORE INITIAL CONDITIONS ... "<< std::endl<<std::endl;
 	output_results(0);
 
 
@@ -1437,13 +1453,13 @@ void CompleteProblem<dim>::run()
 
 		PETScWrappers::MPI::Vector previous_density(locally_owned_dofs, mpi_communicator); //non-ghosted
 
-    pcout << "   GUMMEL ALGORITHM ... "<< std::endl;
+    pcout << "   GUMMEL ALGORITHM ... "<< std::endl; 
     
 		while (err > gummel_tol && it < max_it) {
 
-      pcout << "   GUMMEL ITERATION: "<< it<<std::endl;
+      pcout << "   GUMMEL ITERATION: "<< it+1<<std::endl<<std::endl;//FINO A QUI RUNNA, anche solve_nonlinear, ma non converge
 
-			solve_nonlinear_poisson(tol, max_it); // UPDATE potential AND eta
+			solve_nonlinear_poisson(max_it,tol); // UPDATE potential AND eta
 
 			previous_density = ion_density; // save the previously computed ion_density
 
@@ -1486,7 +1502,7 @@ void CompleteProblem<dim>::run()
 template <int dim>
 void CompleteProblem<dim>::output_results(const unsigned int cycle)
   {
-
+    
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
     data_out.add_data_vector(potential, "phi");
@@ -1496,7 +1512,8 @@ void CompleteProblem<dim>::output_results(const unsigned int cycle)
     data_out.add_data_vector(Vel_Y, "Velocity_Y");
     data_out.add_data_vector(Field_X, "Field_X");
     data_out.add_data_vector(Field_Y, "Field_Y");
-
+    
+  
     // Base directory for output
     std::string base_directory = "../output/results";
 

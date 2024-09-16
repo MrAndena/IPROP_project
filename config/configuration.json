@@ -17,7 +17,7 @@
   "drift_diffusion": {
     "physical_parameters": {
       "eps_0": 8.854e-12,
-      "eps_r": 4.0,
+      "eps_r": 1.0006,
       "q0": 1.602e-19,
       "A": 1.0e22,
       "D": 1.0e22,
