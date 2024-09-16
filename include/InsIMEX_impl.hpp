@@ -350,12 +350,16 @@ InsIMEX<dim>::solve(bool use_nonzero_constraints, bool assemble_system, double t
     if (assemble_system)
     {
         preconditioner.reset(new BlockSchurPreconditioner(timer,
-                                                         NS_struct,
-                                                         owned_partitioning,
-                                                         system_matrix,
-                                                         mass_matrix,
-                                                         mass_schur));
+                                                    gamma,
+                                                    viscosity,
+                                                    time.get_delta_t(),
+                                                    owned_partitioning,
+                                                    system_matrix,
+                                                    mass_matrix,
+                                                    mass_schur));
     }
+
+
     
     double coeff = 0.0 ;   // to avoid to have a tolerance too small
     if (time_step < 4) {

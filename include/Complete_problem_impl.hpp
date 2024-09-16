@@ -224,7 +224,9 @@ void CompleteProblem<dim>::setup_drift_diffusion(const bool reinitialize_densiti
   }
 
 	// Corona inception condition
-  Functions::FEFieldFunction<dim> solution_as_function_object(dof_handler, potential, mapping);
+  // Functions::FEFieldFunction<dim> solution_as_function_object(dof_handler, potential, mapping);
+  Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object(dof_handler, potential, mapping);
+
 
 	auto boundary_evaluator = [&] (const Point<dim> &p)
 		{
@@ -234,6 +236,7 @@ void CompleteProblem<dim>::setup_drift_diffusion(const bool reinitialize_densiti
 
 			return N_ref * EXP;
 		};
+
     
   //vedere commento tesi pag. 38 per capire queste bcs
 
@@ -1183,7 +1186,7 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
                                                       owned_partitioning,
                                                       NS_system_matrix,
                                                       NS_mass_matrix,
-                                                      pressure_mass_schur)); //pressure_mass_matrix?
+                                                      pressure_mass_matrix));
     }
     
     double coeff = 0.0 ;   // to avoid to have a tolerance too small
@@ -1322,7 +1325,8 @@ void CompleteProblem<dim>::solve_navier_stokes()
 			pressure(ind) = NS_solution[NS_local_dof_indices[3*k+2]]; // ... or even this
 			// But they all seem to work in the output!
 
-			vel_max = std::max(vel_max,Vel_X(ind));
+			// vel_max = std::max(vel_max,Vel_X(ind));
+      vel_max = std::max(vel_max, static_cast<double>(Vel_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
 
 		}
 		++cell;
