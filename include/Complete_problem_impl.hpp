@@ -95,9 +95,13 @@ void CompleteProblem<dim>::initialize_potential()
 
   temp = potential;
   
+  // IC potential: everywhere Vi expect on the collector: zero
+  VectorTools::interpolate(mapping, dof_handler, Functions::ConstantFunction<dim>(Vi) , temp);
+  
   std::map<types::global_dof_index, double> boundary_values;
 
   VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Vi), boundary_values);
+  VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), boundary_values);
 
   for (auto &boundary_value : boundary_values){
     temp(boundary_value.first) = boundary_value.second;
@@ -105,6 +109,7 @@ void CompleteProblem<dim>::initialize_potential()
 
   temp.compress(VectorOperation::insert);
   potential = temp;
+
 }
 //--------------------------------------------------------------------------------------------------------------------------------------------------
   template <int dim>
@@ -519,16 +524,15 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
   const double delta = p_amb/101325*298/T; // 
 
   const double mu = mu0 * delta; // scaled mobility from Moseley                   
-  const double V_E = kB * T / q0; // [V] ion temperature                           
-  const double D = mu * V_E; //                                                    
-
+  const double V_TH = kB * T / q0; // [V] ion temperature                           
+  const double D = mu * V_TH; //                                                    
 
   // start to build the matrix
   drift_diffusion_matrix = 0;
 
   const unsigned int vertices_per_cell = 4;
   FullMatrix<double> Robin(vertices_per_cell,vertices_per_cell);
-  
+
   Vector<double> cell_rhs(vertices_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(vertices_per_cell);
   FullMatrix<double> cell_matrix(vertices_per_cell, vertices_per_cell);
@@ -540,8 +544,9 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
 
   std::vector<types::global_dof_index> A_local_dof_indices(t_size);
   std::vector<types::global_dof_index> B_local_dof_indices(t_size);
+
   
-  evaluate_electric_field(); // evaluate Field_X and Field_Y
+  evaluate_electric_field(); 
 
   const double Vh = std::sqrt(8.*numbers::PI*kB * T / Mm * Avo / 2. / numbers::PI); // Hopf velocity
   //const double Vh = std::sqrt(kB * T / Mm * Avo / 2. / numbers::PI); // Thermal velocity
@@ -617,8 +622,6 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
             const Point<dim> v2 = cell->vertex(3); // top right
             const Point<dim> v3 = cell->vertex(0); // bottom left
             const Point<dim> v4 = cell->vertex(1); // bottom right
-
-            const double V_TH = m_data.drift_diffusion.physical_parameters.V_TH;
 
             const double u1 = -potential[local_dof_indices[2]]/V_TH;
             const double u2 = -potential[local_dof_indices[3]]/V_TH;
@@ -747,7 +750,6 @@ void CompleteProblem<dim>::solve_drift_diffusion()
 template <int dim>
 void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step() // method used to update ion_density
 {   
-  
   PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
 
 	ion_rhs = 0;
@@ -756,9 +758,10 @@ void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step() 
 	ion_mass_matrix.vmult(temp, old_ion_density);
 	ion_rhs += temp;
 
+
 	// Integration in time with BE:
 	ion_system_matrix.copy_from(ion_mass_matrix);
-  assemble_drift_diffusion_matrix();
+  assemble_drift_diffusion_matrix();  //INDAGARA QUA DENTRO
 
     // Uncomment to add a non-zero forcing term to DD equations ...
 	/*
@@ -769,17 +772,19 @@ void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step() 
 	ion_rhs += forcing_terms;
 	*/
 
-  solve_drift_diffusion();
+  solve_drift_diffusion(); // INDAGARE QUA DENTRO
+  pcout << "   FATTO dopo solve dd in perform " <<std::endl; //fino a qui va
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 void CompleteProblem<dim>::evaluate_electric_field()
 {
-
+  
   Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
   Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
 
   const unsigned int 		dofs_per_cell = fe.n_dofs_per_cell();
+
   std::vector<double>		global_dof_hits(dof_handler.n_dofs()); //sicuro funzioni ? noi dobbiamo mettere quelli del processore
 
   PETScWrappers::MPI::Vector		el_field_X(locally_owned_dofs, mpi_communicator);
@@ -794,8 +799,8 @@ void CompleteProblem<dim>::evaluate_electric_field()
 	std::vector<types::global_dof_index> 	local_dof_indices(dofs_per_cell);
     
 
-    // NB: in questi cicli for bisogna mettere una condizione if per la cella locale del processore
 	for (auto &cell : dof_handler.active_cell_iterators()){
+
     if (cell->is_locally_owned()){
       
       for (const auto face_index : GeometryInfo<dim>::face_indices())
@@ -827,17 +832,32 @@ void CompleteProblem<dim>::evaluate_electric_field()
       
     }
    }
-   
+
+   el_field_X.compress(VectorOperation::add);
+   el_field_Y.compress(VectorOperation::add);
+
    // Take the average of all dof values
+   /*
    for (unsigned int k = 0; k < dof_handler.n_dofs(); k++) {
 	   el_field_X(k) /= std::max(1., global_dof_hits[k]);
 	   el_field_Y(k) /= std::max(1., global_dof_hits[k]);
-   }
+   }*/
+
+  // è giusta scritta così? il pezzo sotto?
+
+  for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
+
+    el_field_X[*iter] /= std::max(1., global_dof_hits[*iter]);
+    el_field_Y[*iter] /= std::max(1., global_dof_hits[*iter]);
+
+  }
+
+
+   el_field_X.compress(VectorOperation::insert);
+   el_field_Y.compress(VectorOperation::insert);
 
    Field_X = el_field_X;
    Field_Y = el_field_Y;
-
-   //magari mettere dei compress o robe del genere??
    
 }
   
@@ -1237,7 +1257,7 @@ void CompleteProblem<dim>::solve_navier_stokes()
 {
 	evaluate_electric_field();   //Serve ad assembly_NS, crea Field_X e Field_Y
 
-	std::cout << "Solving Navier Stokes... " << std::endl;
+	pcout << "Solving Navier Stokes... " << std::endl; // FINO A QUI ARRIVA 
 
 	// if (step_number == 1) {   
 	// 	assemble_navier_stokes(true);
@@ -1367,7 +1387,7 @@ void CompleteProblem<dim>::run()
   const double T = m_data.drift_diffusion.physical_parameters.stratosphere ? 217. : 303.; // [K] fluid temperature
   const double rho = m_data.drift_diffusion.physical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3 
 
-  const double delta = p_amb/101325*298/T; //                                       
+  const double delta = p_amb/101325*298/T;                                       
      
   const double eps = 1.; // wire surface roughness correction coefficient
   const double Ep = E_ON*delta*eps*(1+0.308/std::sqrt(Re*1.e+2*delta));
@@ -1420,12 +1440,13 @@ void CompleteProblem<dim>::run()
 	output_results(0);
 
 
-  // set errors and tolerances
+  // SET ERRORS AND TOLERANCES
   step_number = 0; 
 
   const unsigned int max_steps = 500;
 	const double tol = 1.e-9;
-	const unsigned int max_it = 1e+3;
+
+	const unsigned int max_it = 1e+3; // riferito al gummel algorithm
 
 	const double time_tol = 5.e-3; //1.e-3;
 	double time_err = 1. + time_tol;
@@ -1445,7 +1466,7 @@ void CompleteProblem<dim>::run()
 			timestep*= 10.;
 
 
-		const double gummel_tol = 1.e-4;
+		const double gummel_tol = 5.e-3; // il nostro codice arriva a 3.7e-3, prima era settata a 1.e-4!!!
 		double err = gummel_tol + 1.;
 		unsigned int it = 0;
 
@@ -1457,13 +1478,13 @@ void CompleteProblem<dim>::run()
     
 		while (err > gummel_tol && it < max_it) {
 
-      pcout << "   GUMMEL ITERATION: "<< it+1<<std::endl<<std::endl;//FINO A QUI RUNNA, anche solve_nonlinear, ma non converge
+      pcout << "   GUMMEL ITERATION: "<< it+1<<std::endl<<std::endl;
 
 			solve_nonlinear_poisson(max_it,tol); // UPDATE potential AND eta
 
 			previous_density = ion_density; // save the previously computed ion_density
 
-			perform_drift_diffusion_fixed_point_iteration_step(); // UPDATE ion_density
+			perform_drift_diffusion_fixed_point_iteration_step(); // UPDATE ion_density    
 
 			previous_density -= ion_density;
 
@@ -1471,22 +1492,29 @@ void CompleteProblem<dim>::run()
 
 			eta = ion_density;
 
-			it++;
+      pcout <<"   ERROR: " << err <<std::endl;
+      
+			it++; // questo ciclo lo fa ma l'errore si abbassa poco alla volta arriva a 3.7e-3, in circa 25 iter
 		}
 
-		if (it >= max_it)
+		if (it >= max_it){
 			pcout << "WARNING! DD achieved a relative error " << err << " after " << it << " iterations" << std::endl;
+    }
 
+    
 		previous_density = old_ion_density;
 		previous_density -= ion_density;
 		time_err = previous_density.linfty_norm()/old_ion_density.linfty_norm();
+
 		pcout << "Density change from previous time-step is: " << time_err*100. << " %" << std::endl;
 
 		old_ion_density = ion_density;
 
 		if (step_number % 40 == 1){ // NS solution update every 40 timesteps
-      pcout << "   SOLVE NAVIER STOKES ... "<< std::endl;
+
+      pcout << "   SOLVE NAVIER STOKES ... "<< std::endl; // FINO A QUA FUNZIONA 
 			solve_navier_stokes();
+
       }
 
 		output_results(step_number);
