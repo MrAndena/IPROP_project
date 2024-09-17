@@ -45,9 +45,9 @@ public:
 
 private:
 
+  double L;
   double A;
   double D;
-  double L;
 
 };
 

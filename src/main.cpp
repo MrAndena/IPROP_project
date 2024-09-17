@@ -7,7 +7,7 @@
 #include "PoissonProblem.h"
 #include "Complete_problem.hpp"
 
-int main(int argc, char** argv){
+int main(int argc, char** argv){ 
 
 //################### - Initialization of parallel utilities - ############################################################################
 

@@ -19,7 +19,7 @@ ENDIF()
 
 
 
-# # Gmsh
+# Gmsh
 # find_program(GMSH_EXECUTABLE NAMES gmsh) 
 
 # # If Gmsh is not found, print an error message and stop
@@ -28,16 +28,22 @@ ENDIF()
 # endif()
 
 
-# Set the path to the Gmsh executable manually
-set(GMSH_EXECUTABLE "/home/giacomo/Lavoro/gmsh-4.11.1-Linux64/bin/gmsh")
 
-# Gmsh
-find_program(GMSH_EXECUTABLE NAMES gmsh PATHS ${GMSH_EXECUTABLE})
+# Try to find Gmsh automatically first
+find_program(GMSH_EXECUTABLE NAMES gmsh)
 
-# If Gmsh is not found, print an error message and stop
+# If Gmsh is not found automatically, fall back to the manually specified path
 if(NOT GMSH_EXECUTABLE)
-    message(FATAL_ERROR "Gmsh executable not found. Please install Gmsh or set the GMSH_EXECUTABLE variable manually.")
+    set(GMSH_EXECUTABLE "/home/giacomo/Lavoro/gmsh-4.11.1-Linux64/bin/gmsh")
 endif()
+
+# Check if the executable exists at this point (either automatically found or manually set)
+if(NOT EXISTS ${GMSH_EXECUTABLE})
+    message(FATAL_ERROR "Gmsh executable not found. Please install Gmsh or verify the GMSH_EXECUTABLE path.")
+endif()
+
+# Print the path for debugging
+message(STATUS "GMSH executable found at ${GMSH_EXECUTABLE}")
 
 
 

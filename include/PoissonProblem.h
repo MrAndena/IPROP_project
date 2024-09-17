@@ -82,10 +82,10 @@ namespace {
       void solve();
 
       void output_results(const unsigned int cycle);
-      
-      data_struct m_data;
 
       MPI_Comm mpi_communicator;
+      
+      data_struct m_data;
 
       parallel::distributed::Triangulation<dim> &triangulation;
 

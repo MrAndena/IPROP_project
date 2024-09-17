@@ -123,6 +123,7 @@ Point<dim> CollectorGeometry<dim>::push_forward(const Point<dim-1>  &x) const   
   //const double y = get_collector_height(x[0], s_data);
 
   Point<dim> p;
+  p[0] = x[0];  //NON SERVE A NIENTE
   //p[0] = x[0]; p[1] = y;
 
   // if (dim == 3) {

@@ -150,12 +150,13 @@ private:
     // FE - DofHandler and Mapping
     std::vector<types::global_dof_index> dofs_per_block;
 
-    MappingQ1<dim> NS_mapping; // non c'è nel nostro INSIEMEX
 
     FESystem<dim>    NS_fe;
     DoFHandler<dim>  NS_dof_handler;
     QGauss<dim> volume_quad_formula;   // non cera nell'originale complete problem
     QGauss<dim - 1> face_quad_formula; // non cera nell'originale complete problem
+    
+    MappingQ1<dim> NS_mapping; // non c'è nel nostro INSIEMEX
     
     // Constraints
     AffineConstraints<double> zero_NS_constraints;
@@ -186,8 +187,8 @@ private:
     double timestep = 0;
     
     // Timer and Time
-    mutable TimerOutput timer;
     Time time_NS;
+    mutable TimerOutput timer;
 };
 
 // HELPER FUNCTIONS FOR LOCAL TRIANGLE ASSEMBLE (Drift-Diffusion)

@@ -12,9 +12,6 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
   , fe(1) //fe for poisson / DD
   , dof_handler(tria) //dof h for poisson / DD
   , mapping() // mapping for poisson / DD
-  , timestep(1.e-5) // vogliamo passare uno dalla struct ? è diverso da NS 
-  , time_NS(d.navier_stokes) // come in INSIMEX
-  , timer(mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
   ,	viscosity(d.navier_stokes.physical_parameters.viscosity)
   , gamma(d.navier_stokes.physical_parameters.gamma) 
   , degree(d.navier_stokes.numerical_parameters.FE_degree) 
@@ -23,6 +20,9 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
   , volume_quad_formula(degree + 2) //non cerano nell'originale
   , face_quad_formula(degree + 2)   //non cerano nell'originale
   , NS_mapping() // serve ? nel nostro NS non cè
+  , timestep(1.e-5) // vogliamo passare uno dalla struct ? è diverso da NS 
+  , time_NS(d.navier_stokes) // come in INSIMEX
+  , timer(mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
 {}
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -79,16 +79,16 @@ void CompleteProblem<dim>::initialize_potential()
   const double E_ON = m_data.drift_diffusion.physical_parameters.E_ON;
   const double Ve = m_data.drift_diffusion.physical_parameters.Ve;
 
-  const double N_0 = m_data.drift_diffusion.physical_parameters.stratosphere ? 2.2e-3 : 0.5e-3; // [m^-3] ambient ion density 
+  // const double N_0 = m_data.drift_diffusion.physical_parameters.stratosphere ? 2.2e-3 : 0.5e-3; // [m^-3] ambient ion density  NON SERVE IN QUESTA FUNZIONE
   const double p_amb = m_data.drift_diffusion.physical_parameters.stratosphere ? 5474 : 101325; 
   const double T = m_data.drift_diffusion.physical_parameters.stratosphere ? 217. : 303.; // [K] fluid temperature
-  const double rho = m_data.drift_diffusion.physical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3 
+  // const double rho = m_data.drift_diffusion.physical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3     !!GUARDA CHE DOPO LA DEFINISCO A MANO
 
   const double delta = p_amb/101325*298/T; //                                       
      
   const double eps = 1.; // wire surface roughness correction coefficient
   const double Ep = E_ON*delta*eps*(1+0.308/std::sqrt(Re*1.e+2*delta));
-  const double Ri = Ep/E_ON*Re; // [m] ionization radius
+  // const double Ri = Ep/E_ON*Re; // [m] ionization radius
   const double Vi = Ve - Ep*Re*log(Ep/E_ON); // [V] voltage on ionization region boundary
 
   PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator); 
@@ -1240,6 +1240,8 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
     // The solution vector must be non-ghosted
     bicg.solve(NS_system_matrix, NS_solution_update, NS_system_rhs, *preconditioner);
 
+    pcout << "solver di NS fatto: " << NS_solution.l2_norm() << std::endl;
+
     const AffineConstraints<double> &constraints_used =
     use_nonzero_constraints ? nonzero_NS_constraints : zero_NS_constraints;
     constraints_used.distribute(NS_solution_update);
@@ -1281,6 +1283,8 @@ void CompleteProblem<dim>::solve_navier_stokes()
   bool assemble_system = (time_NS.get_timestep() < 3);
 
   assemble_NS(apply_nonzero_constraints, assemble_system);
+
+  pcout << "assemble_NS done"  << std::endl;
 
 
   auto state = solver_NS(apply_nonzero_constraints, assemble_system, time_NS.get_timestep());
@@ -1385,7 +1389,7 @@ void CompleteProblem<dim>::run()
   const double N_0 = m_data.drift_diffusion.physical_parameters.stratosphere ? 2.2e-3 : 0.5e-3; // [m^-3] ambient ion density 
   const double p_amb = m_data.drift_diffusion.physical_parameters.stratosphere ? 5474 : 101325; 
   const double T = m_data.drift_diffusion.physical_parameters.stratosphere ? 217. : 303.; // [K] fluid temperature
-  const double rho = m_data.drift_diffusion.physical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3 
+  // const double rho = m_data.drift_diffusion.physical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3    NON SERVE IN RUN
 
   const double delta = p_amb/101325*298/T;                                       
      
