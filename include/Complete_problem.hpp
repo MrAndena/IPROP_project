@@ -89,14 +89,14 @@ private:
     MPI_Comm mpi_communicator;
     ConditionalOStream pcout;
     
-    // Indexsets
-    IndexSet locally_owned_dofs;
-    IndexSet locally_relevant_dofs;
-
     // Object for the mesh
     parallel::distributed::Triangulation<dim> &triangulation; 
     
     // DRIFT-DIFFUSION PART
+
+    // Indexsets
+    IndexSet locally_owned_dofs;
+    IndexSet locally_relevant_dofs;
 
     // FE - DofHandler and Mapping
     FE_Q<dim>       fe;
@@ -180,6 +180,8 @@ private:
 
     IndexSet owned_partitioning_u;
     IndexSet owned_partitioning_p;
+   
+    IndexSet NS_locally_relevant_dofs; //nuovo
 
     
     // Step and Timestep

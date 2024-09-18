@@ -167,7 +167,9 @@ void InsIMEX<dim>::initialize_system()
     mass_schur.reinit(owned_partitioning, schur_dsp, mpi_communicator);       //We want to reinitialize our matrix with new partitions of data
 
     // present_solution is ghosted because it is used in the output and mesh refinement functions.
+    
     // Un vettore ghosted è un vettore che contiene dati locali nella partizione di memoria di un processo MPI, ma include anche una zona "spettrale" (ghost zone) che contiene porzioni dei dati che appartengono a altri processi. Questo è utile perché consente agli algoritmi di comunicare le informazioni necessarie tra i processi MPI senza richiedere una comunicazione esplicita.
+    
     present_solution.reinit(owned_partitioning, relevant_partitioning, mpi_communicator);      
     // solution_increment is non-ghosted (so doesn't contain info of "ghost zone") because the linear solver needs a completely distributed vector.
     solution_increment.reinit(owned_partitioning, mpi_communicator);   
