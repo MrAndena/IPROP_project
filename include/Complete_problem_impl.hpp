@@ -1492,7 +1492,7 @@ void CompleteProblem<dim>::run()
   step_number = 0; 
 
   const unsigned int max_steps = 500;
-	const double tol = 1.e-9;
+	const double tol = 5.e-9;
 
 	const unsigned int max_it = 1e+3; // riferito al gummel algorithm
 

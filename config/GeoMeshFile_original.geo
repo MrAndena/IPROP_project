@@ -20,12 +20,12 @@ dist_Tedge_outlet = distance_trailing_edge_outlet;    //  [m] distance between t
 dist_emi_inlet = distance_emitter_inlet;             //   [m] distance between the surface of the emitter and the inlet
 
 
-H =350*r_emi;           // half of the height of the box that wraps the airfoil
-W = 550*r_emi;          // half of the height at which accour a separation of the domain
-base = 0.03*chord_length;           // the quantity to add at naca chord length to find the length of the rectangle
+H =0.4*dist_emi_up_down;           // half of the height of the box that wraps the airfoil
+W = 0.7*dist_emi_up_down;          // half of the height at which accour a separation of the domain
+base = 0.5*chord_length;           // the quantity to add at naca chord length to find the length of the rectangle
 
-L_emi_in = 50*r_emi;       // [m] half the length of the inner square that wraps the emitter
-L_emi_out = 150*r_emi;      // [m] half the length of the outer square that wraps the emitter
+L_emi_in = 2*r_emi;       // [m] half the length of the inner square that wraps the emitter
+L_emi_out = 5*r_emi;      // [m] half the length of the outer square that wraps the emitter
                           // NB: for what concern the emitter, there is a second other box that wraps it; it has the dimension of L_col_out
 
 mesh_ref_1 = 1;           // dummy mesh ref
@@ -37,7 +37,7 @@ B = 0.95;
 N_A = 51;
 Prog_A = 1;
 
-N_B = 56;
+N_B = 26;
 Prog_B = 1;
 
 N_C = 26;
@@ -58,7 +58,7 @@ Prog_G = 1;
 N_I = 26;
 Prog_I = 1;
 
-N_L = 56;
+N_L = 26;
 Prog_L = 1;
 
 N_M = 26;
@@ -67,7 +67,7 @@ Prog_M = 1;
 N_N = 16;
 Prog_N =1;
 
-N_O = 26;
+N_O = 16;
 Prog_O =1;
 
 
@@ -129,12 +129,12 @@ Point(277) = {-base, -W, 0, mesh_ref_1};
 Point(278) = {-base, r_emi + dist_emi_up_down, 0, mesh_ref_1};
 Point(279) = {-base, -r_emi - dist_emi_up_down, 0, mesh_ref_1};
 
-Point(280) = {-0.4*dist_emi_col, H, 0, mesh_ref_1};
-Point(281) = {-0.4*dist_emi_col, -H, 0, mesh_ref_1};
-Point(282) = {-0.4*dist_emi_col, W, 0, mesh_ref_1};
-Point(283) = {-0.4*dist_emi_col, -W, 0, mesh_ref_1};
-Point(284) = {-0.4*dist_emi_col, r_emi + dist_emi_up_down, 0, mesh_ref_1};
-Point(285) = {-0.4*dist_emi_col, -r_emi - dist_emi_up_down, 0, mesh_ref_1};
+Point(280) = {-0.5*dist_emi_col, H, 0, mesh_ref_1};
+Point(281) = {-0.5*dist_emi_col, -H, 0, mesh_ref_1};
+Point(282) = {-0.5*dist_emi_col, W, 0, mesh_ref_1};
+Point(283) = {-0.5*dist_emi_col, -W, 0, mesh_ref_1};
+Point(284) = {-0.5*dist_emi_col, r_emi + dist_emi_up_down, 0, mesh_ref_1};
+Point(285) = {-0.5*dist_emi_col, -r_emi - dist_emi_up_down, 0, mesh_ref_1};
 
 Point(286) = {-dist_emi_col - r_emi + H, W, 0, mesh_ref_1};
 Point(287) = {-dist_emi_col - r_emi + H, -W, 0, mesh_ref_1};

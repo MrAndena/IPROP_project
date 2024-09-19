@@ -9,7 +9,8 @@ void gmsh_runner(const data_struct& d, unsigned short int i){
     if(d.simulation_specification.ID_simulation<=2){
     
         std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
-        gmsh_command = "gmsh -2 -format msh2 ../config/GeoMeshFile.geo -o ../output/meshes/"+name_mesh;
+        //gmsh_command = "gmsh -2 -format msh2 ../config/GeoMeshFile.geo -o ../output/meshes/"+name_mesh; // OCCHIO AL FILE
+        gmsh_command = "gmsh -2 -format msh2 ../config/GeoMeshFile_original.geo -o ../output/meshes/"+name_mesh; // OCCHIO AL FILE
 
     } else{
 

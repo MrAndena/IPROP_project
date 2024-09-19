@@ -170,6 +170,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
   if(s_data.simulation_specification.ID_simulation <=2){ //NACA NS 
 
         std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
+        //std::string name_mesh = "REAL_EMITTER.msh";//per confronto con tesi messini
         std::string filename = "../output/meshes/"+name_mesh;
         std::cout <<"Reading the mesh from " << filename << std::endl;
         std::ifstream input_file(filename);
