@@ -95,7 +95,7 @@ void CompleteProblem<dim>::initialize_potential()
 
   temp = potential;
   
-  // IC potential: everywhere Vi expect on the collector: zero
+  // IC potential: everywhere Vi expect on the collector: zero, PROVARE AL CONTRARIO MA NON CONVERGE
   VectorTools::interpolate(mapping, dof_handler, Functions::ConstantFunction<dim>(Vi) , temp);
   
   std::map<types::global_dof_index, double> boundary_values;
@@ -580,8 +580,8 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
 
                         for (unsigned int i = 0; i < vertices_per_cell; ++i) {
 
-                            const double vel_f = Vel_X(local_dof_indices[i]); // se agisci su due dof handler diversi qua piange
-
+                            const double vel_f = Vel_X(local_dof_indices[i]);
+                            
                             for (unsigned int q = 0; q < n_q_points; ++q) {
                                 for (unsigned int j = 0; j < vertices_per_cell; ++j) {
                                     Robin(i,j) += face_values.JxW(q) * face_values.shape_value(i,q) * face_values.shape_value(j,q) * vel_f;
@@ -1284,12 +1284,12 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
 
     SolverBicgstab<PETScWrappers::MPI::BlockVector> bicg(solver_control);
 
-    pcout << "NS_system_matrix frob norm is " << NS_system_matrix.frobenius_norm() << std::endl;
-    pcout << "NS_system_rhs l2 norm is " << NS_system_rhs.l2_norm() << std::endl;
+    pcout << "   NS_system_matrix frob norm is " << NS_system_matrix.frobenius_norm() << std::endl;
+    pcout << "   NS_system_rhs l2 norm is " << NS_system_rhs.l2_norm() << std::endl;
     // The solution vector must be non-ghosted
     bicg.solve(NS_system_matrix, NS_solution_update, NS_system_rhs, *preconditioner);
 
-    pcout << "solver di NS fatto: " << NS_solution.l2_norm() << std::endl; 
+    pcout << "   solver di NS fatto: " << NS_solution.l2_norm() << std::endl; 
 
     const AffineConstraints<double> &constraints_used =
     use_nonzero_constraints ? nonzero_NS_constraints : zero_NS_constraints;
@@ -1327,11 +1327,14 @@ void CompleteProblem<dim>::solve_navier_stokes()
   // once using nonzero_constraints, once using zero_constraints.
   bool assemble_system = (time_NS.get_timestep() < 3);
 
+  pcout << "   ASSEMBLE NAVIER STOKES SYSTEM ..."  << std::endl;
   assemble_NS(apply_nonzero_constraints, assemble_system);
 
+
+  pcout << "   SOLVE NAVIER STOKES SYSTEM ..."  << std::endl;
   auto state = solver_NS(apply_nonzero_constraints, assemble_system, time_NS.get_timestep());
 
-  pcout << "   FINE SOLVER NS"  << std::endl;
+
   // Note we have to use a non-ghosted vector to do the addition.
   PETScWrappers::MPI::BlockVector tmp;
   tmp.reinit(owned_partitioning, mpi_communicator);   //We do this since present solution is a ghost vector so is read-only
@@ -1339,10 +1342,10 @@ void CompleteProblem<dim>::solve_navier_stokes()
   tmp += NS_solution_update;
   NS_solution = tmp;
 
-  pcout << std::scientific << std::left << " GMRES_ITR = " << std::setw(3)
-      << state.first << " GMRES_RES = " << state.second << std::endl;
+  pcout << std::scientific << std::left << "   GMRES_ITR = " << std::setw(3)
+      << state.first << "   GMRES_RES = " << state.second << std::endl;
 
-  pcout << "L2 norm of the present solution: " << NS_solution.l2_norm() << std::endl;
+  pcout << "   L2 norm of the present solution: " << NS_solution.l2_norm() << std::endl;
 
   //CI VIENE UNA SOL NULLA !!! La norma L2 in solver_NS viene zero, qua fuori e-20
 
@@ -1353,37 +1356,20 @@ void CompleteProblem<dim>::solve_navier_stokes()
   //Questa parte con Vel_X e Y capire se effettivamnete crearli, per pressure possiamo accedervi in modo più intelligente essendo il 
   //secondo blocco come avevamo fatto anche noi in passato. Il problema è che vengono usati Vel_X e Y in DD. Sicurametne c'è modo più intelligente per accedervi
 
-	pcout << "Recovering velocity and pressure values for output... " << std::endl;
-
-  // FINO A QUI ARRIVA POI SI BLOCCA
-
-  // le tre righe commentate sotto le ho riscritte così, come nel setNS
-  std::vector<unsigned int> block_component(dim + 1, 0); 
-
-  block_component[dim] = 1;
-  DoFRenumbering::component_wise(NS_dof_handler, block_component);
-
-  dofs_per_block = DoFTools::count_dofs_per_fe_block(NS_dof_handler, block_component);
-
-  unsigned int dof_u = dofs_per_block[0];
-  unsigned int dof_p = dofs_per_block[1];
-
-  owned_partitioning_u = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      
-  owned_partitioning_p = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
+	pcout << "   Recovering velocity and pressure values for output... " << std::endl;
 
   //????
-  Vel_X.reinit(owned_partitioning_u, mpi_communicator);
-  Vel_Y.reinit(owned_partitioning_u, mpi_communicator);
+  PETScWrappers::MPI::Vector temp_X;  //NB dof handler di DD !!! va così, come al primo giro
+  PETScWrappers::MPI::Vector temp_Y;
+
+  temp_X.reinit(locally_owned_dofs,  mpi_communicator);
+  temp_Y.reinit(locally_owned_dofs,  mpi_communicator);
+
   pressure.reinit(owned_partitioning_p, mpi_communicator);
-  
-  /*
-	Vel_X.reinit(dof_handler.n_dofs());
-	Vel_Y.reinit(dof_handler.n_dofs());
-	pressure.reinit(dof_handler.n_dofs());
-  */
 
 	const unsigned int dofs_per_cell = 4;
 	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
 	const unsigned int dofs_per_NS_cell = 22;
 	std::vector<types::global_dof_index> NS_local_dof_indices(dofs_per_NS_cell);
 
@@ -1396,31 +1382,42 @@ void CompleteProblem<dim>::solve_navier_stokes()
 	double vel_max = 0.;  //vel_max non serve da nessuna parte credo, capire se serve calcolarla
 
 	while (cell != endc && NS_cell != NS_endc) {
+    if (cell->is_locally_owned() && NS_cell->is_locally_owned())
+    {
 
-		cell->get_dof_indices(local_dof_indices);
-		NS_cell->get_dof_indices(NS_local_dof_indices);
+        cell->get_dof_indices(local_dof_indices);
+        NS_cell->get_dof_indices(NS_local_dof_indices);
 
-		for (unsigned int k = 0; k < dofs_per_cell; ++k) {
+        for (unsigned int k = 0; k < dofs_per_cell; ++k) {
 
-			const unsigned int ind = local_dof_indices[k];
+          const unsigned int ind = local_dof_indices[k];
 
-			Vel_X(ind) = NS_solution[NS_local_dof_indices[3*k]]; // Not so sure about this...
-			Vel_Y(ind) = NS_solution[NS_local_dof_indices[3*k+1]]; // ... or this...
-			pressure(ind) = NS_solution[NS_local_dof_indices[3*k+2]]; // ... or even this
-			// But they all seem to work in the output!
+          temp_X(ind) = NS_solution[NS_local_dof_indices[3*k]]; // Not so sure about this...
+          temp_Y(ind) = NS_solution[NS_local_dof_indices[3*k+1]]; // ... or this...
+          pressure(ind) = NS_solution[NS_local_dof_indices[3*k+2]]; // ... or even this
+          // But they all seem to work in the output!
 
-			// vel_max = std::max(vel_max,Vel_X(ind));
-      vel_max = std::max(vel_max, static_cast<double>(Vel_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
+          // vel_max = std::max(vel_max,Vel_X(ind));
+          vel_max = std::max(vel_max, static_cast<double>(Vel_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
 
-		}
+        }
+    }
+
 		++cell;
 		++NS_cell;
+
 	}
+
+  temp_X.compress(VectorOperation::insert);
+  temp_Y.compress(VectorOperation::insert);
+  
+  pressure.compress(VectorOperation::insert);
+  
+  Vel_X = temp_X;
+  Vel_Y = temp_Y;
 
 	// cout << "Estimating thrust..." << endl; estimate_thrust();
 }
-
-
 
 
 //############ - RUN AND OUTPUT RESULTS - #######################################################################################################
@@ -1506,71 +1503,71 @@ void CompleteProblem<dim>::run()
   pcout << "   START COMPLETE PROBLEM ... "<< std::endl;
 
 	while (step_number < max_steps && time_err > time_tol)
-	  {
+	{
 
-		++step_number;
+      ++step_number;
 
-    pcout << "   DD-NS ITERATION:  "<<step_number<< std::endl;
-		// Faster time-stepping (adaptive time-stepping would be MUCH better!)
-    // timestep varia, diventando sempre più grande, col procedere delle iterazioni temporali
-		if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-3)
-			timestep*= 10.;
+      pcout << "   DD-NS ITERATION:  "<<step_number<< std::endl;
+      // Faster time-stepping (adaptive time-stepping would be MUCH better!)
+      // timestep varia, diventando sempre più grande, col procedere delle iterazioni temporali
+      if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-3)
+        timestep*= 10.;
 
 
-		const double gummel_tol = 5.e-3; // il nostro codice arriva a 3.7e-3, prima era settata a 1.e-4!!!
-		double err = gummel_tol + 1.;
-		unsigned int it = 0;
+      const double gummel_tol = 5.e-3; // il nostro codice arriva a 3.7e-3, prima era settata a 1.e-4!!!
+      double err = gummel_tol + 1.;
+      unsigned int it = 0;
 
-		eta = old_ion_density; // basically eta = N_0 function
+      eta = old_ion_density; // basically eta = N_0 function
 
-		PETScWrappers::MPI::Vector previous_density(locally_owned_dofs, mpi_communicator); //non-ghosted
+      PETScWrappers::MPI::Vector previous_density(locally_owned_dofs, mpi_communicator); //non-ghosted
 
-    pcout << "   GUMMEL ALGORITHM ... "<< std::endl; 
+      pcout << "   GUMMEL ALGORITHM ... "<< std::endl; 
     
-		while (err > gummel_tol && it < max_it) {
+      while (err > gummel_tol && it < max_it) {
 
-      pcout << "   GUMMEL ITERATION: "<< it+1<<std::endl<<std::endl;
+        pcout << "   GUMMEL ITERATION: "<< it+1<<std::endl<<std::endl;
 
-			solve_nonlinear_poisson(max_it,tol); // UPDATE potential AND eta
+        solve_nonlinear_poisson(max_it,tol); // UPDATE potential AND eta
 
-			previous_density = ion_density; // save the previously computed ion_density
+        previous_density = ion_density; // save the previously computed ion_density
 
-			perform_drift_diffusion_fixed_point_iteration_step(); // UPDATE ion_density    
+        perform_drift_diffusion_fixed_point_iteration_step(); // UPDATE ion_density    
 
-			previous_density -= ion_density;
+        previous_density -= ion_density;
 
-			err = previous_density.linfty_norm()/ion_density.linfty_norm();
+        err = previous_density.linfty_norm()/ion_density.linfty_norm();
 
-			eta = ion_density;
+        eta = ion_density;
 
-      pcout <<"   ERROR: " << err <<std::endl;
-      
-			it++; // questo ciclo lo fa ma l'errore si abbassa poco alla volta arriva a 3.7e-3, in circa 25 iter
-		}
-
-		if (it >= max_it){
-			pcout << "WARNING! DD achieved a relative error " << err << " after " << it << " iterations" << std::endl;
-    }
-
-    
-		previous_density = old_ion_density;
-		previous_density -= ion_density;
-		time_err = previous_density.linfty_norm()/old_ion_density.linfty_norm();
-
-		pcout << "   Density change from previous time-step is: " << time_err*100. << " %" << std::endl;
-
-		old_ion_density = ion_density;
-
-		if (step_number % 40 == 1){ // NS solution update every 40 timesteps
-
-      pcout << "   SOLVE NAVIER STOKES ... "<< std::endl; // FINO A QUA FUNZIONA 
-			solve_navier_stokes();
-
+        pcout <<"   ERROR: " << err <<std::endl<<std::endl;
+        
+        it++; // questo ciclo lo fa ma l'errore si abbassa poco alla volta arriva a 3.7e-3, in circa 25 iter
       }
 
-		output_results(step_number);
+      if (it >= max_it){
+        pcout << "WARNING! DD achieved a relative error " << err << " after " << it << " iterations" << std::endl;
+      }
 
-	  }
+    
+      previous_density = old_ion_density;
+      previous_density -= ion_density;
+      time_err = previous_density.linfty_norm()/old_ion_density.linfty_norm();
+
+      pcout << "   Density change from previous time-step is: " << time_err*100. << " %" << std::endl<<std::endl;
+
+      old_ion_density = ion_density;
+
+      if (step_number % 40 == 1){ // NS solution update every 40 timesteps
+
+        pcout << "   START NAVIER STOKES PROBLEM ... "<< std::endl; // FINO A QUA FUNZIONA 
+        solve_navier_stokes();
+
+        }
+
+      output_results(step_number);
+
+      }
 
     //pcout << " 	Elapsed CPU time: " << timer.cpu_time()/60. << " minutes.\n" << std::endl << std::endl;
 
@@ -1609,6 +1606,7 @@ void CompleteProblem<dim>::output_results(const unsigned int cycle)
     Vector<float> subdomain(triangulation.n_active_cells());
     for (unsigned int i = 0; i < subdomain.size(); ++i)
       subdomain(i) = triangulation.locally_owned_subdomain();
+
     data_out.add_data_vector(subdomain, "subdomain");
     data_out.build_patches();
 
