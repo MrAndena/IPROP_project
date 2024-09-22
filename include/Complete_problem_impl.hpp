@@ -1187,7 +1187,7 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
               {
               if (ion_cell != ion_endc && i < 12) {
                 
-                double E_x,E_y,ions;
+                double E_x, E_y, ions;
                 E_x = Field_X(ion_local_dof_indices[i % 3]);  //Mi servono prese da evaluate electric field
                 E_y = Field_Y(ion_local_dof_indices[i % 3]);
                 ions = ion_density(ion_local_dof_indices[i % 3]);
