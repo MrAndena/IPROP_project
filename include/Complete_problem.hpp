@@ -56,12 +56,12 @@ public:
 private:
 
     void setup_poisson();
-    void initialize_potential();
+    void assemble_initial_system();
     void assemble_poisson_laplace_matrix();
     void assemble_poisson_mass_matrix();
     void assemble_nonlinear_poisson();
     double solve_poisson(); // update poisson and eta. it return the residual (L_INF norm of newton_update)
-    void solve_homogeneous_poisson(); // a che serve questa ?
+    void solve_homogeneous_poisson(); 
     void solve_nonlinear_poisson(const unsigned int max_iterations,const double tol); // update poisson and eta
 
     void setup_drift_diffusion(const bool reinitialize_densities); //setup DD
@@ -106,22 +106,25 @@ private:
     // Constraints (messi come l'ultimo dd, non ci sono gli elettorni)
     AffineConstraints<double> ion_constraints;
     AffineConstraints<double> zero_constraints_poisson;
+    AffineConstraints<double> constraints_poisson;
     
     // Poisson Matrices
     PETScWrappers::MPI::SparseMatrix laplace_matrix_poisson;
     PETScWrappers::MPI::SparseMatrix mass_matrix_poisson;
-    PETScWrappers::MPI::SparseMatrix density_matrix_poisson;
     PETScWrappers::MPI::SparseMatrix system_matrix_poisson;
+
+    PETScWrappers::MPI::SparseMatrix initial_matrix_poisson;
     
     // Drift-Diffusion Matrices
     PETScWrappers::MPI::SparseMatrix ion_system_matrix;
     PETScWrappers::MPI::SparseMatrix ion_mass_matrix;
-    PETScWrappers::MPI::SparseMatrix drift_diffusion_matrix; 
     
     // Poisson Vectors
     PETScWrappers::MPI::Vector poisson_newton_update;
     PETScWrappers::MPI::Vector potential;
     PETScWrappers::MPI::Vector poisson_rhs;
+
+    PETScWrappers::MPI::Vector initial_poisson_rhs;
 
     PETScWrappers::MPI::Vector Field_X; //electric field
     PETScWrappers::MPI::Vector Field_Y;

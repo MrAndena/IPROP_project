@@ -100,3 +100,8 @@ sistemare collectorGeometryNS per le simulazioni. penso che i risultati sballati
 Ad oggi il codice fa più simulazioni in base al raggio dell'emettitore, si può cambiare questa feature in modo "rigido"
 
 
+LEGGI QUA PER COSE DA FARE SUL CODICE COMPLETO:
+
+questa è la versione che runna su geometrie grandi ma che da risultati sballati, bisogna:
+mettere la geometria "piccola" vedi download del pc
+sfruttare homo poisson per inizializzare il potenziale e far convergere newton
