@@ -1059,6 +1059,7 @@ void CompleteProblem<dim>::setup_NS()
 
    
     NS_system_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
+    NS_solution.reinit(owned_partitioning, relevant_partitioning, mpi_communicator);
     NS_solution_update.reinit(owned_partitioning, mpi_communicator);
     NS_system_rhs.reinit(owned_partitioning, mpi_communicator);
 
@@ -1406,9 +1407,6 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
   pcout << "   L2 norm of the present solution: " << NS_solution.l2_norm() << std::endl;
 
-  //CI VIENE UNA SOL NULLA !!! La norma L2 in solver_NS viene zero, qua fuori e-20
-
-
   //Ho ottenuto la nuova soluzione di NS, spezziamola ora per essere usata dalla parte elettrica
 
 
@@ -1419,11 +1417,11 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
   PETScWrappers::MPI::Vector temp_X;  //NB dof handler di DD !!! va così, come al primo giro
   PETScWrappers::MPI::Vector temp_Y;
+  PETScWrappers::MPI::Vector temp_pressure;
 
   temp_X.reinit(locally_owned_dofs,  mpi_communicator);
   temp_Y.reinit(locally_owned_dofs,  mpi_communicator);
-
-  pressure.reinit(owned_partitioning[1],relevant_partitioning[1], mpi_communicator);
+  temp_pressure.reinit(owned_partitioning[1], mpi_communicator); // non-ghosted pressure in order to look elements
 
 	const unsigned int dofs_per_cell = 4;
 	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -1461,7 +1459,7 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
           temp_X(ind) = NS_solution.block(0)[NS_local_dof_indices[k]];     // Velocità in x   !!Appena modificato
           temp_Y(ind) = NS_solution.block(0)[NS_local_dof_indices[9+ k]]; // Velocità in y
-          pressure(ind) = NS_solution.block(1)[NS_local_dof_indices[18 +k ]]; // Pressione
+          temp_pressure(ind) = NS_solution.block(1)[NS_local_dof_indices[18 +k ]]; // Pressione
 
           //VERSIONE JACK
           //temp_X(ind) = NS_solution[0][NS_local_dof_indices[2 * k]];     // Velocità in x  
@@ -1480,12 +1478,12 @@ void CompleteProblem<dim>::solve_navier_stokes()
 	}
 
   temp_X.compress(VectorOperation::insert);
-  temp_Y.compress(VectorOperation::insert);
-  
-  pressure.compress(VectorOperation::insert);
+  temp_Y.compress(VectorOperation::insert);  
+  temp_pressure.compress(VectorOperation::insert);
   
   Vel_X = temp_X;
   Vel_Y = temp_Y;
+  pressure = temp_pressure;
 
 	// cout << "Estimating thrust..." << endl; estimate_thrust();
 }
