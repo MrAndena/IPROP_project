@@ -1465,7 +1465,7 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
           // vel_max = std::max(vel_max,Vel_X(ind));
           vel_max = std::max(vel_max, static_cast<double>(temp_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
-          pcout << " problema col max " << std::endl;
+
         }
     }
 
