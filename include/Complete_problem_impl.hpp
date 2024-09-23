@@ -1456,11 +1456,12 @@ void CompleteProblem<dim>::solve_navier_stokes()
           // pcout << " Accesso a pressure " << std::endl;
           // // But they all seem to work in the output!
 
-          // Accedi correttamente ai blocchi : Così mi da errore, ma è sbagliato???
+          // Accedi correttamente ai blocchi : BISOGNA CAPIRE IL NUMBERING DEI SINGOLI DOFS, NON E DETTO CEH
+          // I PRIMI 4 SIANO GLI ANGOLI 
 
           temp_X(ind) = NS_solution.block(0)[NS_local_dof_indices[k]];     // Velocità in x   !!Appena modificato
-          temp_Y(ind) = NS_solution.block(0)[NS_local_dof_indices[4 + k]]; // Velocità in y
-          pressure(ind) = NS_solution.block(1)[NS_local_dof_indices[8 +k ]]; // Pressione
+          temp_Y(ind) = NS_solution.block(0)[NS_local_dof_indices[9+ k]]; // Velocità in y
+          pressure(ind) = NS_solution.block(1)[NS_local_dof_indices[18 +k ]]; // Pressione
 
           //VERSIONE JACK
           //temp_X(ind) = NS_solution[0][NS_local_dof_indices[2 * k]];     // Velocità in x  
