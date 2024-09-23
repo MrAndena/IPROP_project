@@ -934,17 +934,20 @@ void CompleteProblem<dim>::setup_NS()
     //SET UP DOFS
     NS_dof_handler.distribute_dofs(NS_fe);
 
-	  DoFRenumbering::Cuthill_McKee(NS_dof_handler);  //Renumber the degrees of freedom according to the Cuthill-McKee method.
+	  DoFRenumbering::Cuthill_McKee(NS_dof_handler);  // Serve per ridurre la banda della matrice
 
     std::vector<unsigned int> block_component(dim + 1, 0);   //Musk for the reording 
-    block_component[dim] = 1;
-    DoFRenumbering::component_wise(NS_dof_handler, block_component);
+    block_component[dim] = 1; // OUTPUT: block_component = { 0, 0, 1} primi due zeri per velocità x y, 1 per pressione
+
+    DoFRenumbering::component_wise(NS_dof_handler, block_component); // dof_u/2    vel_x dofs  // zero block
+                                                                     // dof_u/2    vel_y dofs  // zero block
+                                                                     // dof_p      press dofs  // one block
 
     dofs_per_block = DoFTools::count_dofs_per_fe_block(NS_dof_handler, block_component);
 
     // Partitioning.
-    unsigned int dof_u = dofs_per_block[0];
-    unsigned int dof_p = dofs_per_block[1];
+    unsigned int dof_u = dofs_per_block[0]; //numero dof TOTALI delle velocità (diviso due per le componenti)
+    unsigned int dof_p = dofs_per_block[1]; //numero dof pressione 
 
 	  owned_partitioning.resize(2);
     owned_partitioning[0] = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      //Extract the set of locally owned DoF indices for each component within the mask that are owned by the current processor.
@@ -1056,7 +1059,6 @@ void CompleteProblem<dim>::setup_NS()
 
    
     NS_system_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
-    NS_solution.reinit(owned_partitioning, relevant_partitioning, mpi_communicator);
     NS_solution_update.reinit(owned_partitioning, mpi_communicator);
     NS_system_rhs.reinit(owned_partitioning, mpi_communicator);
 
@@ -1076,18 +1078,14 @@ void CompleteProblem<dim>::setup_NS()
     tmp1 = NS_solution;
     VectorTools::interpolate(NS_mapping, NS_dof_handler, Functions::ZeroFunction<dim>(dim+1), tmp1);   //Zero initial solution
     NS_solution = tmp1;
-
-
-    //??Farlo ereditare anche a Vel_X e Vel_Y ?? Vel_X e Vel_Y dobbiamo per forza definirle sui dof di DD siccome entrano in assemble DD process 
-   
-    owned_partitioning_u = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      
-    owned_partitioning_p = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
     
-
-    Vel_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);  //NB dof handler di DD !!! va così
+    //NB vel con i dof handler di DD
+    Vel_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);  
     Vel_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
 
-    pressure.reinit(owned_partitioning_p, mpi_communicator); // lui non da problemi in output, inizializzartlo come VelX e Y??
+    pressure.reinit(owned_partitioning[1], relevant_partitioning[1], mpi_communicator); // inizializzarlo come Vel?
+
+    // pressure adesso ghosted avendo messo relevant[1] dopo 
   
   }
 
@@ -1113,12 +1111,12 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
                           volume_quad_formula,             //It implicitely uses a Q1 mapping
                           update_values | update_quadrature_points |
                           update_JxW_values | update_gradients);
-  /*
+  
   FEFaceValues<dim> fe_face_values(NS_fe,
                                   face_quad_formula,
                                   update_values | update_normal_vectors |
                                   update_quadrature_points |
-                                  update_JxW_values); INUTILE NON VIENE USATO */
+                                  update_JxW_values); 
 
   const unsigned int dofs_per_cell = NS_fe.dofs_per_cell;
   const unsigned int n_q_points = volume_quad_formula.size();
@@ -1425,7 +1423,7 @@ void CompleteProblem<dim>::solve_navier_stokes()
   temp_X.reinit(locally_owned_dofs,  mpi_communicator);
   temp_Y.reinit(locally_owned_dofs,  mpi_communicator);
 
-  pressure.reinit(owned_partitioning_p, mpi_communicator);
+  pressure.reinit(owned_partitioning[1],relevant_partitioning[1], mpi_communicator);
 
 	const unsigned int dofs_per_cell = 4;
 	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
@@ -1458,10 +1456,16 @@ void CompleteProblem<dim>::solve_navier_stokes()
           // pcout << " Accesso a pressure " << std::endl;
           // // But they all seem to work in the output!
 
-          // Accedi correttamente ai blocchi
-          temp_X(ind) = NS_solution[0][NS_local_dof_indices[2 * k]];     // Velocità in x   !!Appena modificato
-          temp_Y(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 1]]; // Velocità in y
-          pressure(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 2]]; // Pressione
+          // Accedi correttamente ai blocchi : Così mi da errore, ma è sbagliato???
+
+          temp_X(ind) = NS_solution.block(0)[NS_local_dof_indices[k]];     // Velocità in x   !!Appena modificato
+          temp_Y(ind) = NS_solution.block(0)[NS_local_dof_indices[4 + k]]; // Velocità in y
+          pressure(ind) = NS_solution.block(1)[NS_local_dof_indices[8 +k ]]; // Pressione
+
+          //VERSIONE JACK
+          //temp_X(ind) = NS_solution[0][NS_local_dof_indices[2 * k]];     // Velocità in x  
+          //temp_Y(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 1]]; // Velocità in y
+          //pressure(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 2]]; // Pressione
 
           // vel_max = std::max(vel_max,Vel_X(ind));
           vel_max = std::max(vel_max, static_cast<double>(temp_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
