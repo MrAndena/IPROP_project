@@ -1214,7 +1214,7 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
                       div_phi_u[i] * phi_p[j] -
                       phi_p[i] * div_phi_u[j] +
                       gamma * div_phi_u[j] * div_phi_u[i] +
-                      phi_u[i] * phi_u[j] / time_NS.get_delta_t() //+
+                      phi_u[i] * phi_u[j] / timestep //time_NS.get_delta_t() //+
 
                       // phi_u[i] * (current_velocity_gradients[q] * phi_u[j]) +
                       // phi_u[i] * (grad_phi_u[j] * current_velocity_values[q]) 
@@ -1317,14 +1317,14 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 std::pair<unsigned int, double>
-CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step)
+CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double stepnumber)
 {
     if (assemble_system)
     {
       preconditioner.reset(new BlockSchurPreconditioner(timer,
                                                       gamma,
                                                       viscosity,
-                                                      time_NS.get_delta_t(),
+                                                      timestep, // time_NS.get_delta_t(), 
                                                       owned_partitioning,
                                                       NS_system_matrix,
                                                       NS_mass_matrix,
@@ -1332,9 +1332,9 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
     }
     
     double coeff = 0.0 ;   // to avoid to have a tolerance too small
-    if (time_step < 4) {
-        coeff = 1e-5;
-    } else if (time_step >= 4 && time_step < 10) {
+    if (stepnumber < 40) {
+        coeff = 1e-3;
+    } else if (stepnumber >= 40 && stepnumber < 100) {
         coeff = 1e-3;
     } else {
         coeff = 1e-2;
@@ -1350,7 +1350,7 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
     // The solution vector must be non-ghosted
     bicg.solve(NS_system_matrix, NS_solution_update, NS_system_rhs, *preconditioner);
 
-    pcout << "   solver di NS fatto: " << NS_solution.l2_norm() << std::endl; 
+    pcout << "   solver di NS fatto " << NS_solution.l2_norm() << std::endl; 
 
     const AffineConstraints<double> &constraints_used =
     use_nonzero_constraints ? nonzero_NS_constraints : zero_NS_constraints;
@@ -1382,18 +1382,18 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
   NS_solution_update = 0;
   // Only use nonzero constraints at the very first time step (Così i valori nei constraints non vengono modificati)
-  bool apply_nonzero_constraints = (time_NS.get_timestep() == 1);  //Capire se usare step_number o la classe Time
+  bool apply_nonzero_constraints = (step_number == 1);  //Capire se usare step_number o la classe Time
 
   // We have to assemble the LHS for the initial two time steps:
   // once using nonzero_constraints, once using zero_constraints.
-  bool assemble_system = (time_NS.get_timestep() < 3);
+  bool assemble_system = (step_number < 3);
 
   pcout << "   ASSEMBLE NAVIER STOKES SYSTEM ..."  << std::endl;
   assemble_NS(apply_nonzero_constraints, assemble_system);
 
 
   pcout << "   SOLVE NAVIER STOKES SYSTEM ..."  << std::endl;
-  auto state = solver_NS(apply_nonzero_constraints, assemble_system, time_NS.get_timestep());
+  auto state = solver_NS(apply_nonzero_constraints, assemble_system, step_number);
 
 
   // Note we have to use a non-ghosted vector to do the addition.
@@ -1444,7 +1444,6 @@ void CompleteProblem<dim>::solve_navier_stokes()
 	while (cell != endc && NS_cell != NS_endc) {
     if (cell->is_locally_owned() && NS_cell->is_locally_owned())
     {
-
         cell->get_dof_indices(local_dof_indices);
         NS_cell->get_dof_indices(NS_local_dof_indices);
 
@@ -1452,14 +1451,21 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
           const unsigned int ind = local_dof_indices[k];
 
-          temp_X(ind) = NS_solution[NS_local_dof_indices[3*k]]; // Not so sure about this...
-          temp_Y(ind) = NS_solution[NS_local_dof_indices[3*k+1]]; // ... or this...
-          pressure(ind) = NS_solution[NS_local_dof_indices[3*k+2]]; // ... or even this
-          // But they all seem to work in the output!
+          // temp_X(ind) = NS_solution[NS_local_dof_indices[3*k]]; // Not so sure about this...
+          // temp_Y(ind) = NS_solution[NS_local_dof_indices[3*k+1]]; // ... or this...
+          // pcout << " Accesso ai temp " << std::endl;
+          // pressure(ind) = NS_solution[NS_local_dof_indices[3*k+2]]; // ... or even this
+          // pcout << " Accesso a pressure " << std::endl;
+          // // But they all seem to work in the output!
+
+          // Accedi correttamente ai blocchi
+          temp_X(ind) = NS_solution[0][NS_local_dof_indices[2 * k]];     // Velocità in x   !!Appena modificato
+          temp_Y(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 1]]; // Velocità in y
+          pressure(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 2]]; // Pressione
 
           // vel_max = std::max(vel_max,Vel_X(ind));
           vel_max = std::max(vel_max, static_cast<double>(temp_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
-
+          pcout << " problema col max " << std::endl;
         }
     }
 
@@ -1627,7 +1633,7 @@ void CompleteProblem<dim>::run()
 
       output_results(step_number);
 
-      }
+  }
 
     //pcout << " 	Elapsed CPU time: " << timer.cpu_time()/60. << " minutes.\n" << std::endl << std::endl;
 
