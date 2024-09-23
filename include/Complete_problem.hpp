@@ -180,9 +180,6 @@ private:
     std::shared_ptr<BlockSchurPreconditioner> preconditioner; // non c'era nell'originale complete problem
     std::vector<IndexSet> owned_partitioning;                //  non c'era nell'originale complete problem
     std::vector<IndexSet> relevant_partitioning;             // non c'era nell'originale complete problem
-
-    IndexSet owned_partitioning_u;
-    IndexSet owned_partitioning_p;
    
     IndexSet NS_locally_relevant_dofs; //nuovo
 
