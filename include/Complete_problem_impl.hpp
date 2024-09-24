@@ -45,7 +45,6 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
       
     const double eps = 1.; // wire surface roughness correction coefficient
     const double Ep = E_ON*delta*eps*(1+0.308/std::sqrt(Re*1.e+2*delta));
-    // const double Ri = Ep/E_ON*Re; // [m] ionization radius
     const double Vi = Ve - Ep*Re*log(Ep/E_ON); // [V] voltage on ionization region boundary
 
 
@@ -53,6 +52,7 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
 
     // INDEX SETS INITIALIZATION
     locally_owned_dofs = dof_handler.locally_owned_dofs();                           //local dofs
+    //estrae gli indici globali dei gradi di libertà (DoFs) che sono posseduti localmente dal processore
     locally_relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_handler);    //local dofs + ghost dofs
     
     // PETSC VECTORS DECLARATIONS 
@@ -513,7 +513,7 @@ void CompleteProblem<dim>::assemble_nonlinear_poisson()
     double residual = poisson_newton_update.linfty_norm();
 
     //Clamping 
-    for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
+    for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){
   
       if (poisson_newton_update[*iter] < -V_TH) { poisson_newton_update[*iter] = -V_TH; }
       else if (poisson_newton_update[*iter] > V_TH) { poisson_newton_update[*iter] = V_TH; }
@@ -568,7 +568,9 @@ void CompleteProblem<dim>::solve_nonlinear_poisson(const unsigned int max_iter_n
     //NB: Mass and Laplace matrices are already build
     
     assemble_nonlinear_poisson();
-    increment_norm = solve_poisson();  //residual computation, clamping on newton update, BCs and update of the charges are inside this method  
+    increment_norm = solve_poisson();  //residual computation, 
+                                       //clamping on newton update, 
+                                       //BCs and update of the charges are inside this method  
     
     pcout << "   Update Increment: "<<increment_norm<<std::endl<<std::endl;
 
@@ -606,11 +608,12 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
   
 
   const unsigned int vertices_per_cell = 4;
-  FullMatrix<double> Robin(vertices_per_cell,vertices_per_cell);
+  FullMatrix<double> Robin(vertices_per_cell, vertices_per_cell);
 
-  Vector<double> cell_rhs(vertices_per_cell);
   std::vector<types::global_dof_index> local_dof_indices(vertices_per_cell);
+
   FullMatrix<double> cell_matrix(vertices_per_cell, vertices_per_cell);
+  Vector<double>     cell_rhs(vertices_per_cell);
 
   const unsigned int t_size = 3;
 
@@ -643,30 +646,40 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
             Robin = 0;
             A_cell_rhs = 0;
             B_cell_rhs = 0;
-            cell->get_dof_indices(local_dof_indices);
+
+
+            cell->get_dof_indices(local_dof_indices); //Recupera gli indici globali dei gradi di libertà associati alla cella corrente
+
 
             // Robin conditions at outlet and (optional) at collector
             if (cell->at_boundary()) {
+
                 for (const auto &face : cell->face_iterators()) {
+
                     if (face->at_boundary() && face->boundary_id() == 2) { // Outlet
 
-                        face_values.reinit(cell,face);
+                        face_values.reinit(cell, face);
 
-                        for (unsigned int i = 0; i < vertices_per_cell; ++i) {
+                        for (unsigned int i = 0; i < vertices_per_cell; ++i) { // "i" gira su i global dof della cella
 
                             const double vel_f = Vel_X(local_dof_indices[i]); // creato in setup_NS - riempito in solve_NS
                             
                             for (unsigned int q = 0; q < n_q_points; ++q) {
+
                                 for (unsigned int j = 0; j < vertices_per_cell; ++j) {
+
                                     Robin(i,j) += face_values.JxW(q) * face_values.shape_value(i,q) * face_values.shape_value(j,q) * vel_f;
+
                                 }
                             }
                         }
 
-                    } else if (face->at_boundary() && (face->boundary_id() == 4)) { // Collector
+                    } else if (face->at_boundary() && face->boundary_id() == 4) { // Collector
+
                         face_values.reinit(cell,face);
 
                         for (unsigned int i = 0; i < vertices_per_cell; ++i) {
+
                             Tensor<1,dim> Evec;
                             Evec[0] = Field_X(local_dof_indices[i]);
                             Evec[1] = Field_Y(local_dof_indices[i]);
@@ -683,7 +696,9 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
                                 if (std::isnan(En) || En <0.) pcout << "WARNING! Scalar product is " << En << " in " << face->center() << std::endl;
 
                                 for (unsigned int j = 0; j < vertices_per_cell; ++j) {
+
                                         Robin(i,j) += face_values.JxW(q) * face_values.shape_value(i,q) * face_values.shape_value(j,q) * (Vh + mu * En);
+
                                 }
                             }
                         }
@@ -732,13 +747,14 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
             const double alpha13 = (u_f_1 * dir_13)/D*l_31 + (u3 - u1);
 
             if (l_alpha >= l_beta) { // l_alpha is the longest diagonal: split by beta
+
                         const double l_23 = side_length(v2,v3);
                         const Tensor<1,dim> dir_23 = (v3 - v2)/l_beta;
 
                         const double alpha23 = (u_f_2 * dir_23)/D*l_23 + (u3 - u2);
 
                         // Triangle A:
-                        A= compute_triangle_matrix(v2,v1,v3, alpha21, alpha13, -alpha23, this->m_data);
+                        A = compute_triangle_matrix(v2,v1,v3, alpha21, alpha13, -alpha23, this->m_data);
 
                         // Triangle B:
                         B = compute_triangle_matrix(v3,v4,v2, alpha34, alpha42, alpha23, this->m_data);
@@ -792,6 +808,7 @@ void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
                     ion_constraints.distribute_local_to_global(A, A_cell_rhs,  A_local_dof_indices, ion_system_matrix, ion_rhs);
                     ion_constraints.distribute_local_to_global(B, B_cell_rhs,  B_local_dof_indices, ion_system_matrix, ion_rhs);
                     ion_constraints.distribute_local_to_global(Robin,  cell_rhs, local_dof_indices, ion_system_matrix, ion_rhs);
+
         }
 	 }
    
@@ -832,8 +849,7 @@ void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step() 
 
 
 	// Integration in time with BE:
-	ion_system_matrix.copy_from(ion_mass_matrix);
-  assemble_drift_diffusion_matrix(); 
+	ion_system_matrix.copy_from(ion_mass_matrix); //  A CHE SEREV STA COSA ?? PER LE BCS?? 
 
     // Uncomment to add a non-zero forcing term to DD equations ...
 	/*
@@ -875,8 +891,7 @@ void CompleteProblem<dim>::evaluate_electric_field()
 
     if (cell->is_locally_owned()){
       
-      for (const auto face_index : GeometryInfo<dim>::face_indices())
-          {
+      for (const auto face_index : GeometryInfo<dim>::face_indices()){
 
             fe_iv.reinit(cell, face_index);
             local_dof_indices = fe_iv.get_interface_dof_indices();
@@ -1363,7 +1378,7 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
 
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
-template <int dim>
+template <int dim> // QUALCOSA QUA NON VA BENE PERCHE LA SOLUZIONE E TUTTA SBAGLIATA E SEGUE LE FORME DEI PROCESSORI
 void CompleteProblem<dim>::solve_navier_stokes()
 {
 	evaluate_electric_field();   //Serve ad assembly_NS, crea Field_X e Field_Y
@@ -1424,7 +1439,7 @@ void CompleteProblem<dim>::solve_navier_stokes()
   temp_pressure.reinit(owned_partitioning[1], mpi_communicator); // non-ghosted pressure in order to look elements
 
 	const unsigned int dofs_per_cell = 4;
-	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell); // È un vettore, che verrà riempito con gli indici dei DoFs globali associati alla cella
 
 	const unsigned int dofs_per_NS_cell = 22;
 	std::vector<types::global_dof_index> NS_local_dof_indices(dofs_per_NS_cell);
@@ -1438,37 +1453,41 @@ void CompleteProblem<dim>::solve_navier_stokes()
 	double vel_max = 0.;  //vel_max non serve da nessuna parte credo, capire se serve calcolarla
 
 	while (cell != endc && NS_cell != NS_endc) {
+
     if (cell->is_locally_owned() && NS_cell->is_locally_owned())
     {
-        cell->get_dof_indices(local_dof_indices);
+        cell->get_dof_indices(local_dof_indices);       //Recupera gli indici globali dei gradi di libertà associati alla cella corrente
         NS_cell->get_dof_indices(NS_local_dof_indices);
 
         for (unsigned int k = 0; k < dofs_per_cell; ++k) {
 
-          const unsigned int ind = local_dof_indices[k];
+              const unsigned int global_dof_index = local_dof_indices[k]; 
+              
+              // Verifica che l'indice globale sia posseduto localmente
+              if (locally_owned_dofs.is_element(global_dof_index)) {
 
-          // temp_X(ind) = NS_solution[NS_local_dof_indices[3*k]]; // Not so sure about this...
-          // temp_Y(ind) = NS_solution[NS_local_dof_indices[3*k+1]]; // ... or this...
-          // pcout << " Accesso ai temp " << std::endl;
-          // pressure(ind) = NS_solution[NS_local_dof_indices[3*k+2]]; // ... or even this
-          // pcout << " Accesso a pressure " << std::endl;
-          // // But they all seem to work in the output!
+                  const unsigned int local_index = locally_owned_dofs.index_within_set(global_dof_index);
 
-          // Accedi correttamente ai blocchi : BISOGNA CAPIRE IL NUMBERING DEI SINGOLI DOFS, NON E DETTO CEH
-          // I PRIMI 4 SIANO GLI ANGOLI 
+                  const unsigned int global_index_NS_Vel_X = NS_local_dof_indices[k];
+                  const unsigned int global_index_NS_Vel_Y = NS_local_dof_indices[9+k];
+                  const unsigned int global_index_NS_pressure = NS_local_dof_indices[18+k]; 
 
-          temp_X(ind) = NS_solution.block(0)[NS_local_dof_indices[k]];     // Velocità in x   !!Appena modificato
-          temp_Y(ind) = NS_solution.block(0)[NS_local_dof_indices[9+ k]]; // Velocità in y
-          temp_pressure(ind) = NS_solution.block(1)[NS_local_dof_indices[18 +k ]]; // Pressione
+                  if (owned_partitioning[0].is_element(global_index_NS_Vel_X) &&
+                      owned_partitioning[0].is_element(global_index_NS_Vel_Y) &&
+                      owned_partitioning[1].is_element(global_index_NS_pressure)) {
+                      
+                      const unsigned int local_index_NS_Vel_X = owned_partitioning[0].index_within_set(global_index_NS_Vel_X);
+                      const unsigned int local_index_NS_Vel_Y = owned_partitioning[0].index_within_set(global_index_NS_Vel_Y);
+                      const unsigned int local_index_NS_pressure = owned_partitioning[1].index_within_set(global_index_NS_pressure);
 
-          //VERSIONE JACK
-          //temp_X(ind) = NS_solution[0][NS_local_dof_indices[2 * k]];     // Velocità in x  
-          //temp_Y(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 1]]; // Velocità in y
-          //pressure(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 2]]; // Pressione
+                      // Ora accedi ai valori
+                      temp_X(local_index) = NS_solution.block(0)[local_index_NS_Vel_X];     // Velocità in x
+                      temp_Y(local_index) = NS_solution.block(0)[local_index_NS_Vel_Y];     // Velocità in y
+                      temp_pressure(local_index) = NS_solution.block(1)[local_index_NS_pressure]; // Pressione
 
-          // vel_max = std::max(vel_max,Vel_X(ind));
-          vel_max = std::max(vel_max, static_cast<double>(temp_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
-          pcout << " problema col max " << std::endl;
+                      vel_max = std::max(vel_max, static_cast<double>(temp_X(local_index)));
+                  } 
+              } 
         }
     }
 
