@@ -169,7 +169,8 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
 { 
   if(s_data.simulation_specification.ID_simulation <=2){ //NACA NS 
 
-        std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
+        //std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
+        std::string name_mesh = "WireWire_" + std::to_string(i) + ".msh";
         //std::string name_mesh = "REAL_EMITTER.msh";//per confronto con tesi messini
         std::string filename = "../output/meshes/"+name_mesh;
         std::cout <<"Reading the mesh from " << filename << std::endl;
@@ -178,25 +179,26 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
         grid_in.attach_triangulation(tria);           
         grid_in.read_msh(input_file);                 
 
-        const types::manifold_id emitter = 3;        
+        const types::manifold_id emitter = 3; 
+        const types::manifold_id collector = 4;       
        
         const double distance_emitter_collector = s_data.geometrical_parameters.distance_emitter_collector;
         const double r_emi = s_data.geometrical_parameters.emitter_radius[i];
         double X = -distance_emitter_collector - r_emi; 
         const Point<2> center(X,0.0);
+
         SphericalManifold<2> emitter_manifold(center);
 
-        const types::manifold_id collector = 4;
+        
 
-        CollectorGeometry<2> collector_manifold;
+        //CollectorGeometry<2> collector_manifold; // QUA USI LA CLASSE PER IL PROFILO NACA
 
 
         // for wire wire simulation
-        // double r_col = 1e-3;
-        // double r_emi = 30e-5;
-        // double dist_emi_col = 0.025;
-        // const Point<2> center2(r_col,0.0);
-        // SphericalManifold<2> collector_manifold(center2);               
+        const double r_col = 1e-3;
+        const Point<2> center2(r_col,0.0);
+
+        SphericalManifold<2> collector_manifold(center2);               
 
         tria.set_all_manifold_ids_on_boundary(3, emitter);
         tria.set_manifold(emitter, emitter_manifold);
