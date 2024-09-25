@@ -1472,16 +1472,6 @@ void CompleteProblem<dim>::solve_navier_stokes()
                   const unsigned int global_index_NS_Vel_Y = NS_local_dof_indices[9+k];
                   const unsigned int global_index_NS_pressure = NS_local_dof_indices[18+k]; 
 
-<<<<<<< HEAD
-          //VERSIONE JACK
-          //temp_X(ind) = NS_solution[0][NS_local_dof_indices[2 * k]];     // Velocità in x  
-          //temp_Y(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 1]]; // Velocità in y
-          //pressure(ind) = NS_solution[1][NS_local_dof_indices[2 * k + 2]]; // Pressione
-
-          // vel_max = std::max(vel_max,Vel_X(ind));
-          vel_max = std::max(vel_max, static_cast<double>(temp_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
-
-=======
                   if (owned_partitioning[0].is_element(global_index_NS_Vel_X) &&
                       owned_partitioning[0].is_element(global_index_NS_Vel_Y) &&
                       owned_partitioning[1].is_element(global_index_NS_pressure)) {
@@ -1498,7 +1488,6 @@ void CompleteProblem<dim>::solve_navier_stokes()
                       vel_max = std::max(vel_max, static_cast<double>(temp_X(local_index)));
                   } 
               } 
->>>>>>> 5df0e5765b0ad2c7eb99009d8a634d81c29b9c3c
         }
     }
 
