@@ -37,7 +37,7 @@ B = 0.95;
 N_A = 51;
 Prog_A = 1;
 
-N_B = 56;
+N_B = 46;
 Prog_B = 1;
 
 N_C = 26;
@@ -46,19 +46,19 @@ Prog_C = 1;
 N_D = 11;
 Prog_D = 1;
 
-N_E = 26;
+N_E = 21;
 Prog_E = 1;
 
 N_F = 26;
 Prog_F = 1;
 
-N_G = 26;
+N_G = 16;
 Prog_G = 1;
 
-N_I = 26;
+N_I = 16;
 Prog_I = 1;
 
-N_L = 56;
+N_L = 31;
 Prog_L = 1;
 
 N_M = 26;

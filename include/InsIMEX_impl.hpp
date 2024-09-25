@@ -1,5 +1,3 @@
-
-
 // @sect4{InsIMEX::InsIMEX}
 template <int dim>
 InsIMEX<dim>::InsIMEX(parallel::distributed::Triangulation<dim> &tria, const NavierStokes& NS, unsigned short int i)
@@ -20,6 +18,7 @@ InsIMEX<dim>::InsIMEX(parallel::distributed::Triangulation<dim> &tria, const Nav
 {
 }
 
+
 // @sect4{InsIMEX::setup_dofs}
 template <int dim>
 void InsIMEX<dim>::setup_dofs()
@@ -30,7 +29,7 @@ void InsIMEX<dim>::setup_dofs()
     // which are separately accessed in the block preconditioner.
     DoFRenumbering::Cuthill_McKee(dof_handler);                      //Renumber the degrees of freedom according to the Cuthill-McKee method.
     std::vector<unsigned int> block_component(dim + 1, 0);           //Musk for the reording       //Block: in our case are two, one with dimension = dim and one with dimension = 1
-    block_component[dim] = 1;
+    block_component[dim] = 1; // block_component = {0,0,1}
     DoFRenumbering::component_wise(dof_handler, block_component);    //We want to sort degree of freedom for a NS discretization so that we first get all velocities and then all the pressures so that the resulting matrix naturally decomposes into a 2×2 system.
     dofs_per_block = DoFTools::count_dofs_per_fe_block(dof_handler, block_component); //Returns a vector (of dim=2) of types::global_dof_index  
     // Partitioning.
@@ -435,6 +434,7 @@ void InsIMEX<dim>::run()
 
         // Resetting
         solution_increment = 0;
+
         // Only use nonzero constraints at the very first time step (Così i valori nei constraints non vengono modificati)
         bool apply_nonzero_constraints = (time.get_timestep() == 1);
         
