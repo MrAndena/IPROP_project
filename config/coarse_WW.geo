@@ -20,12 +20,12 @@ L_emi_out = 60*r_emi;      // [m] half the length of the outer square that wraps
 
 // COLLECTOR TRANSFINITE VALUES:
 
-Num_col_circ = 41;      //number of points of the transfinite lines on the collector circunference
+Num_col_circ = 26;      //number of points of the transfinite lines on the collector circunference
 Prog_col_circ = 1;      //progression number on collector circunference
 
 Num_col_in_box = Num_col_circ;    //number of points of the transfinite lines on the collector inner box
 Prog_col_in_box = 1;              //progression number on collector inner box
-Num_col_in_L = 36;                //number of points of the transfinite lines on the collector inner box obliquos edge
+Num_col_in_L = 31;                //number of points of the transfinite lines on the collector inner box obliquos edge
 Prog_col_in_L = 1;                //progression number on collector inner box obl. edge
 
 // outer box that contains emitter and collector transfinite value
@@ -41,7 +41,7 @@ Prog_emi_circ = 1;           //progression number on the emitter circunference
 
 Num_emi_in_box = Num_box;    //number of points of the transfinite lines on the emitter inner box
 Prog_emi_in_box = 1;         //progression number on emitter inner box
-Num_emi_in_L = 31;           //number of points of the transfinite lines on the inner emitter box obl. edges
+Num_emi_in_L = 26;           //number of points of the transfinite lines on the inner emitter box obl. edges
 Prog_emi_in_L = 1;           //progression number on emitter inner box obl. edge
 
 Num_emi_out_box = Num_box;   //number of points of the transfinite lines on the emitter outer box
@@ -204,10 +204,10 @@ Line(42) = {32,33};    Transfinite Curve {42} = Num_box Using Progression Prog_b
 Line(43) = {33,34};    Transfinite Curve {43} = Num_box Using Progression Prog_box;
 Line(44) = {34,31};    Transfinite Curve {44} = Num_box Using Progression Prog_box;
 
-Line(45) = {27,31};    Transfinite Curve {45} = 71 Using Progression A*Prog_box_L;
-Line(46) = {28,32};    Transfinite Curve {46} = 71 Using Progression A*Prog_box_L;
-Line(47) = {29,33};    Transfinite Curve {47} = 71 Using Progression A*Prog_box_L;
-Line(48) = {30,34};    Transfinite Curve {48} = 71 Using Progression A*Prog_box_L;
+Line(45) = {27,31};    Transfinite Curve {45} = 26 Using Progression A*Prog_box_L;
+Line(46) = {28,32};    Transfinite Curve {46} = 26 Using Progression A*Prog_box_L;
+Line(47) = {29,33};    Transfinite Curve {47} = 26 Using Progression A*Prog_box_L;
+Line(48) = {30,34};    Transfinite Curve {48} = 26 Using Progression A*Prog_box_L;
 
 Line(51) = {44,22};    Transfinite Curve {51} = Num_dom_right_up Using Progression A*Prog_dom_right_up;
 Line(52) = {26,45};    Transfinite Curve {52} = Num_dom_right_up Using Progression A*Prog_dom_right_up;

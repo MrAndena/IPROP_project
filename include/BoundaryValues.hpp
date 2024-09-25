@@ -71,22 +71,21 @@ class BoundaryValues : public Function<dim>
     // Default constructor 
     BoundaryValues() : Function<dim>(dim + 1) {}
     
-    virtual double value(const Point<dim> &p,
-                         const unsigned int component) const override;
-    virtual void vector_value(const Point<dim> &p,
-                              Vector<double> &values) const override;
+    virtual double value(const Point<dim> &p, const unsigned int component) const override;
+
+    virtual void vector_value(const Point<dim> &p,  Vector<double> &values) const override;
+
   };
 
 //---------------------------------------------------- implementation --------------------------------------------------------------
 template <int dim>
-double BoundaryValues<dim>::value(const Point<dim> & /*p*/,
-								                  const unsigned int component) const
+double BoundaryValues<dim>::value(const Point<dim> & /*p*/,  const unsigned int component) const
 {
  Assert(component < this->n_components,
 		ExcIndexRange(component, 0, this->n_components));
 
  if (component == 0) 
-	return 1.5;
+	return 1.5; // prima 1.5
 
  if (component == dim)
 		return 0.;      // Boundary condition at fluid outlet

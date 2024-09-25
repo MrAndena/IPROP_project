@@ -169,9 +169,9 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
 { 
   if(s_data.simulation_specification.ID_simulation <=2){ //NACA NS 
 
-        //std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
-        std::string name_mesh = "WireWire_" + std::to_string(i) + ".msh";
-        //std::string name_mesh = "REAL_EMITTER.msh";//per confronto con tesi messini
+        std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
+        //std::string name_mesh = "WireWire_" + std::to_string(i) + ".msh";
+      
         std::string filename = "../output/meshes/"+name_mesh;
         std::cout <<"Reading the mesh from " << filename << std::endl;
         std::ifstream input_file(filename);
@@ -191,14 +191,14 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
 
         
 
-        //CollectorGeometry<2> collector_manifold; // QUA USI LA CLASSE PER IL PROFILO NACA
+        CollectorGeometry<2> collector_manifold; // QUA USI LA CLASSE PER IL PROFILO NACA
 
 
         // for wire wire simulation
-        const double r_col = 1e-3;
-        const Point<2> center2(r_col,0.0);
+        //const double r_col = 1e-3;
+        //const Point<2> center2(r_col,0.0);
 
-        SphericalManifold<2> collector_manifold(center2);               
+        //SphericalManifold<2> collector_manifold(center2);               
 
         tria.set_all_manifold_ids_on_boundary(3, emitter);
         tria.set_manifold(emitter, emitter_manifold);
