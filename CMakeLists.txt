@@ -34,7 +34,7 @@ find_program(GMSH_EXECUTABLE NAMES gmsh)
 
 # If Gmsh is not found automatically, fall back to the manually specified path
 if(NOT GMSH_EXECUTABLE)
-    set(GMSH_EXECUTABLE "/home/giacomo/Lavoro/gmsh-4.11.1-Linux64/bin/gmsh")
+    set(GMSH_EXECUTABLE "/home/giacomo/Lavoro/gmsh-4.11.1-Linux64/bin/gmsh") # SPECIFICO NOSTRO
 endif()
 
 # Check if the executable exists at this point (either automatically found or manually set)
@@ -80,11 +80,10 @@ DEAL_II_INVOKE_AUTOPILOT()
 # make custom_clean per eliminare i file specificati
 add_custom_target(custom_clean
     COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_SOURCE_DIR}/compile_commands.json     #delete commands.json
-    COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_SOURCE_DIR}/output/meshes/*.msh       #delete all .mesh
-    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_SOURCE_DIR}/output/results     #delete all simulation results
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/output/results       #create new results directory
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_SOURCE_DIR}/output/            #delete all simulation results
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/output/              #create new output directory
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}                    #delete build direcotry
-    COMMENT "Custom clean: Deleting compile_commands.json, .msh files, build directory and the entire results directory"
+    COMMENT "Custom clean: Deleting compile_commands.json, build directory and the numerical simulations"
 )
 
 

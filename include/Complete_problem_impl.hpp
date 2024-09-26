@@ -5,7 +5,6 @@ CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> 
                                       const data_struct &d,  // data struct from the user
                                       unsigned short int i)  // tag of the simulation
   : m_data(d)
-  , simulation_tag(i)
   , mpi_communicator(MPI_COMM_WORLD)
   , pcout(std::cout, (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
   , triangulation(tria)
@@ -1630,7 +1629,7 @@ void CompleteProblem<dim>::run()
 
         
         it++; 
-        output_results(it);
+        //output_results(it);
       }
 
       if (it >= max_it){
@@ -1651,7 +1650,7 @@ void CompleteProblem<dim>::run()
         pcout << "   START NAVIER STOKES PROBLEM ... "<< std::endl; // FINO A QUA FUNZIONA 
         solve_navier_stokes();
 
-        }
+      }
 
       output_results(step_number);
 

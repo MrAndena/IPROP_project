@@ -49,7 +49,7 @@ class CompleteProblem
 
 public:
 
-    CompleteProblem(parallel::distributed::Triangulation<dim> &tria, const data_struct &d, unsigned short int i);
+    CompleteProblem(parallel::distributed::Triangulation<dim> &tria, const data_struct &d);
 
     void run(); // ha senso mettere tolleranze qua ?
 

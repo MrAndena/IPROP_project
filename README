@@ -4,48 +4,34 @@ Supervisors: Carlo De Falco - Giuseppe Caliò
 Students: Tommaso Andena - Giacomo Bottacini
 
 
-
 ######################### Directory Scheme:
 
 - src/
 
     - main.cpp               
     - config_reader.cpp
-    - data4geo.cpp
-    - gmsh_runner.cpp
-    - NACA_points_generator.cpp
 
 - include/
 
     - BlockSchurPreconditioner.hpp             // NS simulation code
     - BlockSchurPreconditioner_impl.hpp        // NS simulation code  
-    - InsIMEX.hpp                              // NS simulation code
-    - InsIMEX_impl.hpp                         // NS simulation code
+    - comp_impl
+    - comp
     - Time.hpp                                 // NS simulation code
     - BoundaryValues.hpp                       // NS simulation code
     - CollectorGeometryNS                      // NS and DD simulation code (magari cambia nome)
     - data_struct.hpp                          // custom struct that store the user data
-    - Electrical_Values.hpp                    // DD simulation code
-    - Electrical_Values_impl.hpp               // DD simulation code
-    - PoissonProblem.h                         // DD simulation code
-    - PoissonProblem_impl.h                    // DD simulation code
-    - config_reader.hpp                        // translate .json user inputs into a struct  
-    - data4geo.hpp                             // create .txt file used in the .msh creation 
-    - gmsh_runner.hpp                          // run gmsh commands
-    - GmshPoint.hpp                            // useful class for gmsh points writing 
-    - NACA_points_generator.hpp                // writes in a .txt file the coordinates of naca points
+    - config_reader.hpp                        // translate .json user inputs into a struct 
     - json.hpp                                 // just him the one the only  
 
 - config/
 
     - configuration.json                       // user interface, file used to specify all the parameters
-    - GeoMeshFile.geo                          // .geo used to create the naca meshes
-    - PNjunction.geo                           // .geo used to create thepn junction meshes
 
-- output/
+- output/                                      // where the simulation results are stored   
 
-    - results/                                 // where the simulations results are stored              
-    - meshes/                                  // where the meshes are stored (you can look at them exploiting gmsh)
+
+- meshes/                                      // where the user saves its own meshes
 
 - CMakeLists.txt
 - README            
