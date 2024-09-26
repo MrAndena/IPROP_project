@@ -68,24 +68,29 @@ class BoundaryValues : public Function<dim>
   {
   public:
     
-    // Default constructor 
-    BoundaryValues() : Function<dim>(dim + 1) {}
+    // Default constructor that initializes inlet_value to 0.0
+    BoundaryValues() : Function<dim>(dim + 1), inlet_value(0.0) {}
+
+    // Constructor that takes a double parameter to initialize inlet_value
+    BoundaryValues(double inlet_val) : Function<dim>(dim + 1), inlet_value(inlet_val) {}
+
+    double inlet_value;
     
-    virtual double value(const Point<dim> &p, const unsigned int component) const override;
-
-    virtual void vector_value(const Point<dim> &p,  Vector<double> &values) const override;
-
+    virtual double value(const Point<dim> &p,
+                         const unsigned int component) const override;
+    virtual void vector_value(const Point<dim> &p,
+                              Vector<double> &values) const override;
   };
 
-//---------------------------------------------------- implementation --------------------------------------------------------------
 template <int dim>
-double BoundaryValues<dim>::value(const Point<dim> & /*p*/,  const unsigned int component) const
+double BoundaryValues<dim>::value(const Point<dim> & /*p*/,
+								                  const unsigned int component) const
 {
  Assert(component < this->n_components,
 		ExcIndexRange(component, 0, this->n_components));
 
  if (component == 0) 
-	return 1.5; // prima 1.5
+	return inlet_value;
 
  if (component == dim)
 		return 0.;      // Boundary condition at fluid outlet

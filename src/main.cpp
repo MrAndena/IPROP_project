@@ -66,7 +66,7 @@ int main(int argc, char** argv){
                 
                                         parallel::distributed::Triangulation<2> tria(MPI_COMM_WORLD);
 
-                                        create_triangulation(tria, my_data, i);
+                                        create_triangulation(tria, my_data, static_cast<unsigned short>(i));
 
                                         InsIMEX<2> flow(tria, my_data.navier_stokes, i);
 
