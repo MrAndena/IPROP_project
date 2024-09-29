@@ -62,8 +62,6 @@
 #include <sstream>
 
 
-#include "Time.hpp"
-#include "BoundaryValues.hpp"
 #include "data_struct.hpp"
 #include <unordered_map>
 #include <string>
@@ -78,7 +76,7 @@ double get_collector_height(const double &p, const data_struct &s_data)
 {
   
     
-  double collector_length = s_data.geometrical_parameters.chord_length;
+  double collector_length = s_data.geometrical_parameters.naca.chord_length;
   const double x = p/collector_length;
 	double y = 0;
 
@@ -88,7 +86,7 @@ double get_collector_height(const double &p, const data_struct &s_data)
 		double a2 = -0.3516;
 		double a3 = 0.2843;
 		double a4 = -0.1036; // or -0.1015 for an open trailing edge
-		double t = s_data.geometrical_parameters.NACA_digits; // Last 2 digits of the NACA by 100
+		double t = s_data.geometrical_parameters.naca.naca_digits; // Last 2 digits of the NACA by 100
 
 		y = 5*t*( a0 * sqrt(x) + a1 * x + a2 * pow(x,2.0) + a3 * pow(x,3.0) + a4 * pow(x,4.0) );
 	}
@@ -187,7 +185,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
 
                 std::string filename = "../meshes/"+name_mesh;
 
-                std::cout <<"Reading the mesh from " << filename << std::endl;
+                std::cout <<"   Reading the mesh from " << filename << std::endl;
 
                 std::ifstream input_file(filename);
                 GridIn<2>       grid_in;
@@ -213,7 +211,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
                 tria.set_all_manifold_ids_on_boundary(4, collector);
                 tria.set_manifold(collector, collector_manifold);
                 
-                std::cout  << "Active cells: " << tria.n_active_cells() << std::endl;
+                std::cout  << "   Active cells: " << tria.n_active_cells() << std::endl;
 
                 break;
             }
@@ -225,7 +223,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
 
                 std::string filename = "../meshes/"+name_mesh;
 
-                std::cout <<"Reading the mesh from " << filename << std::endl;
+                std::cout <<"   Reading the mesh from " << filename << std::endl;
 
                 std::ifstream input_file(filename);
                 GridIn<2>       grid_in;
@@ -253,19 +251,49 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
                 tria.set_all_manifold_ids_on_boundary(4, collector);
                 tria.set_manifold(collector, collector_manifold);
                 
-                std::cout  << "Active cells: " << tria.n_active_cells() << std::endl;
+                std::cout  << "   Active cells: " << tria.n_active_cells() << std::endl;
                 break;
             }
 
 
             case 3:{
-                //  QUA METTERE LA MANIFOLD DELLA NUOVA GEOMETRIA cercare come mettere due circonferenze concentriche
+                            
+                std::string name_mesh = s_data.simulation_specification.mesh_name;
+                std::string filename = "../meshes/" + name_mesh;
+
+                std::cout << "   Reading the mesh from " << filename << std::endl;
+                std::ifstream input_file(filename);
+
+                // Attacca e leggi la mesh
+                GridIn<2> grid_in;
+                grid_in.attach_triangulation(tria);
+                grid_in.read_msh(input_file);
+
+                // Identificatori per emitter e collector
+                const types::manifold_id emitter = 3;
+                const types::manifold_id collector = 4;
+
+                // Definire il centro comune per le circonferenze concentriche
+                const Point<2> center(0.0, 0.0);  
+
+                // Definire i manifold per emitter e collector
+                SphericalManifold<2> emitter_manifold(center);
+                SphericalManifold<2> collector_manifold(center);  // Stesso centro, ma raggi differenti per l'emitter e il collector
+
+                // Impostare i manifold sulle superfici delle due circonferenze
+                tria.set_all_manifold_ids_on_boundary(3, emitter);  // Imposta ID per la superficie dell'emitter
+                tria.set_manifold(emitter, emitter_manifold);        // Associa il manifold dell'emitter
+                tria.set_all_manifold_ids_on_boundary(4, collector); // Imposta ID per la superficie del collector
+                tria.set_manifold(collector, collector_manifold);    // Associa il manifold del collector
+
+                std::cout << "   Active cells: " << tria.n_active_cells() << std::endl;
+
                 break;
             }
 
 
             default:{
-                std::cout << "This TAG does not exists\n";
+                std::cout << "   This TAG does not exists\n";
                 break;
             }
 

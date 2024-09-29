@@ -9,11 +9,12 @@
     "eps_r": 1.0006,
     "q0": 1.602e-19,
     "kB": 1.381e-23,
-    "mu0": 1.84e-4,
+    "mu0": 1.9399e-4,
     "stratosphere": false,
-    "E_ON": 3.31e+6,
-    "E_ref": 7.0e+7,
-    "N_ref": 1.0e+13,
+    "E_ON": 6.6803e+6,
+    "E_ref": 3.8165e+5,
+    "N_ref": 1.0e+14,
+    "N_min":1.0e+9,
     "Mm": 29.0e-3,
     "Avo": 6.022e+23,
     "Ve":2.0e+4
@@ -22,6 +23,7 @@
 
      "NACA": {
         "chord_length": 1,
+        "naca_digits": 12,
         "emitter_radius": 30e-3,
         "distance_emitter_collector": 2.5,
         "distance_trailing_edge_outlet": 1.0,
@@ -29,7 +31,7 @@
         "distance_emitter_up_bottom": 1.5
     },
     "WW": {
-        "emitter_radius:":0.0,
+        "emitter_radius":0.0,
         "collector_radius":0.0,
         "distance_emitter_collector":0.0,
         "distance_collector_outlet":0.0,
@@ -37,12 +39,12 @@
         "distance_emitter_up_bottom":0.0
     },
     "CYL": {
-        "emitter_radius":0.0,
-        "collector_radius":0.0
+        "emitter_radius":0.7e-3,
+        "collector_radius":2e-2
     }
   },
   "simulation_specification": {
-    "mesh_name":"naca_1.msh",
-    "mesh_TAG":"NACA"
+    "mesh_name":"concentric_cylinders.msh",
+    "mesh_TAG":"CYL"
   }
 }

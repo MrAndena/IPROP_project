@@ -36,6 +36,7 @@ void reader(data_struct& data){
     dati_json.at("electrical_parameters").at("E_ON").get_to(data.electrical_parameters.E_ON);
     dati_json.at("electrical_parameters").at("E_ref").get_to(data.electrical_parameters.E_ref);
     dati_json.at("electrical_parameters").at("N_ref").get_to(data.electrical_parameters.N_ref);
+    dati_json.at("electrical_parameters").at("N_min").get_to(data.electrical_parameters.N_min);
     dati_json.at("electrical_parameters").at("Mm").get_to(data.electrical_parameters.Mm);
     dati_json.at("electrical_parameters").at("Avo").get_to(data.electrical_parameters.Avo);
     dati_json.at("electrical_parameters").at("Ve").get_to(data.electrical_parameters.Ve);
@@ -44,6 +45,7 @@ void reader(data_struct& data){
 
     //NACA
     dati_json.at("geometrical_parameters").at("NACA").at("chord_length").get_to(data.geometrical_parameters.naca.chord_length);
+    dati_json.at("geometrical_parameters").at("NACA").at("naca_digits").get_to(data.geometrical_parameters.naca.naca_digits);
     dati_json.at("geometrical_parameters").at("NACA").at("emitter_radius").get_to(data.geometrical_parameters.naca.emitter_radius);
     dati_json.at("geometrical_parameters").at("NACA").at("distance_emitter_collector").get_to(data.geometrical_parameters.naca.distance_emitter_collector);
     dati_json.at("geometrical_parameters").at("NACA").at("distance_trailing_edge_outlet").get_to(data.geometrical_parameters.naca.distance_trailing_edge_outlet);

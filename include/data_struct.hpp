@@ -19,11 +19,12 @@ struct ElectricalParameters { // verificare e finire di scirvere unita misura
     double eps_r;    //permittivity
     double q0;       //unit charge [C]
     double kB;       //[J/K]
-    double mu0;      //Moseley (?) 
+    double mu0;      //Mobility
     bool stratosphere; //bool, if false use atmospheric 0 km condition
     double E_ON;     // onset field threshold [V/m]
     double E_ref;    // maximum field value [V/m]
     double N_ref;    // maximum density value [m^-3]
+    double N_min;
     double Mm;       // average air molar mass [kg m^-3]
     double Avo;      // Avogadro's number
     double Ve;       // emitter voltage [V]
@@ -36,6 +37,7 @@ struct ElectricalParameters { // verificare e finire di scirvere unita misura
 struct NACA {
      
     double chord_length;                   // length of the chord [m]
+    int naca_digits;                       // type of naca
     double emitter_radius;                 // radius of the circular emitter [m]
     double distance_emitter_collector;     // distance circular emitter surface, airfoil collector surface
     double distance_trailing_edge_outlet;  // distance trailing edge outlet

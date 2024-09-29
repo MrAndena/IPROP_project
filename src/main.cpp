@@ -1,5 +1,5 @@
 #include "config_reader.hpp"
-#include "Complete_problem.hpp"
+#include "drift_diffusion.hpp"
 
 int main(int argc, char** argv){ 
 
@@ -8,10 +8,15 @@ int main(int argc, char** argv){
     using namespace dealii;
 
     Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
-    const unsigned int rank = Utilities::MPI::this_mpi_process(MPI_COMM_WORLD); // store rank of the current processor
-
+    //const unsigned int rank = Utilities::MPI::this_mpi_process(MPI_COMM_WORLD); // store rank of the current processor
+    
     data_struct my_data; //empty struct data
+
+    std::cout<<"   Reading JSON file inputs ...";
+
     reader(my_data); //all the processor know my_data, struct that contains all the user specification
+
+    std::cout<<"   Done !"<<std::endl;
 
 
 //#################### - Code for the simulation - ##########################################################################################
@@ -24,7 +29,7 @@ int main(int argc, char** argv){
 
                 create_triangulation(tria, my_data);
 
-                CompleteProblem<2> problem(tria, my_data);
+                drift_diffusion<2> problem(tria, my_data);
 
                 problem.run();
 

@@ -86,6 +86,13 @@ add_custom_target(custom_clean
     COMMENT "Custom clean: Deleting compile_commands.json, build directory and the numerical simulations"
 )
 
+# make clean_output per eliminare solo gli output
+add_custom_target(clean_output
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_SOURCE_DIR}/output/            #delete all simulation results
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/output/              #create new output directory
+    COMMENT "clean output: Deleting all the numerical simulations"
+)
+
 
 
 
