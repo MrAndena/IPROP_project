@@ -1,4 +1,3 @@
-
 template <int dim>
 drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> &tria,  // triangulation for the mesh
                                                              const data_struct &d)  // data struct from the user
@@ -9,7 +8,7 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , fe(1) //fe for poisson / DD
   , dof_handler(tria) //dof h for poisson / DD
   , mapping() // mapping for poisson / DD
-  , timestep(1e-5)
+  , timestep(1e-5) // timestep for the DD algorithm
 {}
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -71,6 +70,9 @@ laplace_matrix_poisson.reinit(locally_owned_dofs, locally_owned_dofs, dsp,  mpi_
 
 mass_matrix_poisson.clear();  //store mass matrix
 mass_matrix_poisson.reinit(locally_owned_dofs, locally_owned_dofs, dsp,  mpi_communicator);
+
+density_matrix.clear();  //store density matrix in the non linear poisson system
+density_matrix.reinit(locally_owned_dofs, locally_owned_dofs, dsp,  mpi_communicator);
 
 
 
@@ -147,7 +149,7 @@ initial_poisson_rhs.compress(VectorOperation::add);
 }
 //--------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>  
-void drift_diffusion<dim>::solve_homogeneous_poisson()
+void drift_diffusion<dim>::solve_homogeneous_poisson() // find the initial value for the potential
 {
   
   PETScWrappers::MPI::Vector temp;
@@ -274,7 +276,7 @@ const double N_min = m_data.electrical_parameters.N_min;
 Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object(dof_handler, potential, mapping);
 
 
-auto boundary_evaluator = [&] (const Point<dim> &p)
+auto boundary_evaluator = [&] (const Point<dim> &p) //lambda function
 {
     Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
 
@@ -289,7 +291,7 @@ auto boundary_evaluator = [&] (const Point<dim> &p)
 };
 
 
-// DENSITY IONS CONSTRAINTS (nota che evolvono siccome potential => electric field evolvono)
+// DENSITY IONS CONSTRAINTS (se si vuole rilassare va aggiornata ad ogni iterazione qunidi spostata da qui)
 ion_constraints.clear();
 ion_constraints.reinit(locally_relevant_dofs);
 VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
@@ -303,6 +305,7 @@ SparsityTools::distribute_sparsity_pattern(ion_dsp,
                                            mpi_communicator,
                                            locally_relevant_dofs);
 
+
 // DENSITY VECTORS AND MATRICES
 eta.reinit(locally_owned_dofs, mpi_communicator);                                // non-ghosted
 ion_density.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator); // ghosted
@@ -311,10 +314,73 @@ ion_rhs.reinit(locally_owned_dofs, mpi_communicator);                           
 
 
 ion_mass_matrix.clear();
-ion_mass_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_communicator); //vedere metodo successivo 
+ion_mass_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_communicator); 
 
 ion_system_matrix.clear();
 ion_system_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_communicator); 
+
+}
+//--------------------------------------------------------------------------------------------------------------------------------
+template <int dim>
+void drift_diffusion<dim>::update_ion_boundary_condition(){
+
+//fix the constants
+const double E_ON  = m_data.electrical_parameters.E_ON;
+const double E_ref = m_data.electrical_parameters.E_ref;
+const double N_ref = m_data.electrical_parameters.N_ref;
+const double N_min = m_data.electrical_parameters.N_min;
+const double theta = m_data.electrical_parameters.theta;
+
+
+// Corona inception condition: boundary condition for ion density
+Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_1(dof_handler, potential, mapping);
+Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_2(dof_handler, ion_density, mapping);
+
+//relaxation parameters
+const double comp_theta = 1-theta;
+
+//lambda function
+auto boundary_evaluator = [&] (const Point<dim> &p) 
+{
+    Tensor<1,dim> grad_pot = solution_as_function_object_1.gradient(p); //gradiente del potenziale in p
+    const double ion_density_value = solution_as_function_object_2.value(p); //valore della densità nel punto p
+    Tensor<1,dim> normal = get_emitter_normal(p); // versore normale nel punto p
+
+    const double En = grad_pot*normal; // campo elettrico normale in p: gradiente del potenziale * normale
+
+    const double kappa_over_alpha = N_ref*std::exp((En-E_ON)/E_ref);
+
+    const double n = std::max(N_min, kappa_over_alpha);
+
+    const double scalar = En*ion_density_value;
+
+    const double returned_value = theta*n*scalar + comp_theta*ion_density_value;
+  
+    return returned_value;
+
+};
+
+
+// DENSITY IONS CONSTRAINTS
+ion_constraints.clear();
+VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
+ion_constraints.close();
+
+
+DynamicSparsityPattern ion_dsp(locally_relevant_dofs);
+DoFTools::make_sparsity_pattern(dof_handler, ion_dsp, ion_constraints, false);
+SparsityTools::distribute_sparsity_pattern(ion_dsp,
+                                           dof_handler.locally_owned_dofs(),
+                                           mpi_communicator,
+                                           locally_relevant_dofs);
+
+ion_mass_matrix.clear();
+ion_mass_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_communicator); 
+
+ion_system_matrix.clear();
+ion_system_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_communicator); 
+
+
 
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -348,9 +414,10 @@ void drift_diffusion<dim>::assemble_drift_diffusion_mass_matrix()
 
   for (q_point = 0; q_point < n_q_points; ++q_point) {
     for (idof = 0; idof < dofs_per_cell; ++idof) {
-      for (jdof = 0; jdof < dofs_per_cell; ++jdof)
-  cell_matrix(idof, jdof) += fe_values.shape_value(idof, q_point) *
-    fe_values.shape_value(jdof, q_point) * fe_values.JxW(q_point);
+      for (jdof = 0; jdof < dofs_per_cell; ++jdof){
+         cell_matrix(idof, jdof) += fe_values.shape_value(idof, q_point) *
+         fe_values.shape_value(jdof, q_point) * fe_values.JxW(q_point);
+      }
     }
   }
 
@@ -378,8 +445,10 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
     const double V_TH = kB*T/q0;
 
     //BUILDING POISSON SYSTEM MATRIX (for newton)
+
     system_matrix_poisson = 0;
-    ion_mass_matrix = 0;
+    //ion_mass_matrix = 0;
+    density_matrix = 0; // we store in a new matrix the  ion density
 
     double new_value = 0;
   
@@ -387,15 +456,17 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
     for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
 
       new_value = mass_matrix_poisson(*iter, *iter) * eta(*iter);
-      ion_mass_matrix.set(*iter,*iter,new_value);
+      //ion_mass_matrix.set(*iter,*iter,new_value);
+      density_matrix.set(*iter,*iter,new_value);
 
     }
 
-    ion_mass_matrix.compress(VectorOperation::insert);
+    //ion_mass_matrix.compress(VectorOperation::insert);
+    density_matrix.compress(VectorOperation::insert);
     
 
     system_matrix_poisson.add(eps_r * eps_0, laplace_matrix_poisson); // SYS_MAT = SYS_MAT +  eps*A
-    system_matrix_poisson.add(q0 / V_TH, ion_mass_matrix);            // SYS_MAT = SYS_MAT + q0/V_TH * (eta)*MASS_MAT
+    system_matrix_poisson.add(q0 / V_TH, density_matrix);            // SYS_MAT = SYS_MAT + q0/V_TH * (eta)*MASS_MAT
 
   
     // BUILDING SYSTEM RHS
@@ -428,7 +499,7 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
     const double T = m_data.electrical_parameters.stratosphere ? 217. : 303.; 
     const double V_TH = kB*T/q0;
 
-    //Apply zero boundary conditions to the whole newton poisson system
+    //Apply zero boundary conditions to the whole linear newton poisson system
     //We apply the BCs on tags 3 (emitter) and 4 (collector)
     
     std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
@@ -489,17 +560,9 @@ void drift_diffusion<dim>::solve_nonlinear_poisson(const unsigned int max_iter_n
 
   unsigned int counter = 0; // it keeps track of newton iteration
 
-  pcout << "   - START POISSON NEWTON - "<< std::endl;
-
-  double increment_norm = std::numeric_limits<double>::max(); // the increment norm is + inf
-
-  pcout << "   Initial Newton Increment Norm dphi: " << increment_norm << std::endl; 
-  
+  double increment_norm = std::numeric_limits<double>::max(); // the increment norm is + inf 
 
   while(counter < max_iter_newton && increment_norm > toll_newton){
-
-    pcout << "   NEWTON ITERATION NUMBER: "<< counter +1<<std::endl;
-    pcout << "   Assemble System Poisson Matrix"<< std::endl; 
 
     //NB: Mass and Laplace matrices are already build
     
@@ -507,8 +570,6 @@ void drift_diffusion<dim>::solve_nonlinear_poisson(const unsigned int max_iter_n
     increment_norm = solve_poisson();  //residual computation, 
                                        //clamping on newton update, 
                                        //BCs and update of the charges are inside this method  
-    
-    pcout << "   Update Increment: "<<increment_norm<<std::endl<<std::endl;
 
     counter ++;
 
@@ -534,8 +595,9 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
              
   const double V_TH = kB * T / q0; // [V] ion temperature                           
   const double D = mu0 * V_TH; //                                                    
-
-  // start to build the matrix
+  
+  // ion_mass_matrix already built
+  // start to build the flux matrix
   
 
   const unsigned int vertices_per_cell = 4;
@@ -723,7 +785,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
                         B_local_dof_indices[2] = local_dof_indices[1];
                     }
 
-                    // As the ion system matrix is M + delta t DD, the contributions are multiplied by the timestep
+                    // As the ion system matrix is M + delta t DD, the contributions are multiplied by the timestep. M is already there!
                     for (unsigned int i = 0; i < t_size; ++i) {
                         for (unsigned int j = 0; j < t_size; ++j) {
                             A(i,j) = A(i,j)*timestep;
@@ -944,7 +1006,7 @@ void drift_diffusion<dim>::run()
 
   
   // START THE ALGORITHM
-pcout << "   START Time dependent drift_diffusion ... "<< std::endl;
+pcout << "   START Time dependent drift_diffusion Loop ... "<< std::endl<<std::endl;
 
 while (step_number < max_steps && time_err > time_tol){
     
@@ -952,12 +1014,11 @@ while (step_number < max_steps && time_err > time_tol){
     ++step_number;
 
     // Faster time-stepping (adaptive time-stepping would be MUCH better!)
-    if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-3)
-        timestep*= 10.;
-    
+		if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-3)
+			timestep*= 10.;
 
     int it = 0;            // internal gummel iterator
-    const double gummel_tol = 1.e-4;  // riferito al gummel algorithm
+    const double gummel_tol = 6.e-4;  // riferito al gummel algorithm
     double err = gummel_tol + 1.;    // errore gummel
 
     eta = old_ion_density; // basically eta = N_0 function
@@ -965,13 +1026,10 @@ while (step_number < max_steps && time_err > time_tol){
     PETScWrappers::MPI::Vector previous_density;
     previous_density.reinit(locally_owned_dofs, mpi_communicator);
 
-    pcout << "   GUMMEL ALGORITHM ... "<< std::endl; 
-
-    pcout<< "   Initial Potential L2 norm: "<<potential.l2_norm()<<std::endl<<std::endl;
+    pcout << "   GUMMEL ALGORITHM ... ";
 
     while (err > gummel_tol && it < max_it) { // in questo ciclo NON si aggiorna old_ion_density
 
-        pcout << "   GUMMEL ITERATION: "<< it+1<<std::endl<<std::endl;
 
         solve_nonlinear_poisson(max_it,tol); // UPDATE potential AND eta (loop over k)
 
@@ -985,9 +1043,6 @@ while (step_number < max_steps && time_err > time_tol){
 
         eta = ion_density;
 
-        pcout <<"   ERROR: " << err <<std::endl<<std::endl;
-
-
         it++; 
         
     }
@@ -996,13 +1051,21 @@ while (step_number < max_steps && time_err > time_tol){
     pcout << "WARNING! DD achieved a relative error " << err << " after " << it << " iterations" << std::endl;
     }
 
+    pcout << "   Done !"<< std::endl;
+
+    pcout << "   UPDATE ION BOUNDARY CONDITIONS ... ";
+    update_ion_boundary_condition();
+    assemble_drift_diffusion_mass_matrix();
+    pcout<<"   Done !"<<std::endl; 
+
     previous_density = old_ion_density;
     previous_density -= ion_density;
+    
     time_err = previous_density.linfty_norm()/old_ion_density.linfty_norm();
-    pcout << "Density change from previous time-step is: " << time_err*100. << " %" << std::endl;
+    pcout << "   Density change from previous time-step is: " << time_err*100. << " %" << std::endl;
+    pcout << "   time error is:  "<<time_err << std::endl<<std::endl;
 
     old_ion_density = ion_density;
-
 
     output_results(step_number);
 
@@ -1201,4 +1264,16 @@ FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, c
 	tria_matrix(2,2) = - (tria_matrix(0,2)+tria_matrix(1,2));
 
 	return tria_matrix;
+}
+//---------------------------------------------------------------------------------------------------------------------------------------------------
+Tensor<1,2> get_emitter_normal(const Point<2> a) {
+
+	Tensor<1,2> normal;
+
+	normal[0] = a[0];
+	normal[1] = a[1];
+
+	const double norm = std::sqrt(normal[0]*normal[0]+normal[1]*normal[1]);
+
+	return normal/norm;
 }

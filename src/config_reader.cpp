@@ -40,6 +40,7 @@ void reader(data_struct& data){
     dati_json.at("electrical_parameters").at("Mm").get_to(data.electrical_parameters.Mm);
     dati_json.at("electrical_parameters").at("Avo").get_to(data.electrical_parameters.Avo);
     dati_json.at("electrical_parameters").at("Ve").get_to(data.electrical_parameters.Ve);
+    dati_json.at("electrical_parameters").at("theta").get_to(data.electrical_parameters.theta);
 
     // Load Geometrical parameters
 

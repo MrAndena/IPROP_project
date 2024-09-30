@@ -9,15 +9,16 @@
     "eps_r": 1.0006,
     "q0": 1.602e-19,
     "kB": 1.381e-23,
-    "mu0": 1.9399e-4,
+    "mu0": 2e-4,
     "stratosphere": false,
-    "E_ON": 6.6803e+6,
-    "E_ref": 3.8165e+5,
+    "E_ON": 7.1146e+6,
+    "E_ref": 4.1436e+5,
     "N_ref": 1.0e+14,
     "N_min":1.0e+9,
     "Mm": 29.0e-3,
     "Avo": 6.022e+23,
-    "Ve":2.0e+4
+    "Ve":2.0e+4,
+    "theta":0.0
   },
   "geometrical_parameters": {
 

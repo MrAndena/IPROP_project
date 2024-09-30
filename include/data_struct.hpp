@@ -28,6 +28,7 @@ struct ElectricalParameters { // verificare e finire di scirvere unita misura
     double Mm;       // average air molar mass [kg m^-3]
     double Avo;      // Avogadro's number
     double Ve;       // emitter voltage [V]
+    double theta;
 
 };
 
