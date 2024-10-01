@@ -169,8 +169,9 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
 { 
   if(s_data.simulation_specification.ID_simulation <=2){ //NACA NS 
 
-        std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
+        // std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
         //std::string name_mesh = "WireWire_" + std::to_string(i) + ".msh";
+        std::string name_mesh = "structured_naca_2.msh";
       
         std::string filename = "../output/meshes/"+name_mesh;
         std::cout <<"Reading the mesh from " << filename << std::endl;
