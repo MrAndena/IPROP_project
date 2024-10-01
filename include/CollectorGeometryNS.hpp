@@ -61,11 +61,10 @@
 #include <iostream>
 #include <sstream>
 
-#include "InsIMEX.hpp"
-#include "BlockSchurPreconditioner.hpp"
-#include "Time.hpp"
-#include "BoundaryValues.hpp"
+
 #include "data_struct.hpp"
+#include <unordered_map>
+#include <string>
 
 
 using namespace dealii;
@@ -77,7 +76,7 @@ double get_collector_height(const double &p, const data_struct &s_data)
 {
   
     
-  double collector_length = s_data.geometrical_parameters.chord_length;
+  double collector_length = s_data.geometrical_parameters.naca.chord_length;
   const double x = p/collector_length;
 	double y = 0;
 
@@ -87,7 +86,7 @@ double get_collector_height(const double &p, const data_struct &s_data)
 		double a2 = -0.3516;
 		double a3 = 0.2843;
 		double a4 = -0.1036; // or -0.1015 for an open trailing edge
-		double t = s_data.geometrical_parameters.NACA_digits; // Last 2 digits of the NACA by 100
+		double t = s_data.geometrical_parameters.naca.naca_digits; // Last 2 digits of the NACA by 100
 
 		y = 5*t*( a0 * sqrt(x) + a1 * x + a2 * pow(x,2.0) + a3 * pow(x,3.0) + a4 * pow(x,4.0) );
 	}
@@ -165,68 +164,142 @@ Point<dim-1>  CollectorGeometry<dim>::pull_back(const Point<dim> &p) const      
 
   
 
-void create_triangulation(parallel::distributed::Triangulation<2> &tria, const data_struct& s_data, unsigned short int i)
+void create_triangulation(parallel::distributed::Triangulation<2> &tria, const data_struct& s_data)
 { 
-  if(s_data.simulation_specification.ID_simulation <=2){ //NACA NS 
+   
+  std::unordered_map<std::string, int> stringToCase{
+  {"NACA", 1},
+  {"WW", 2},
+  {"CYL", 3}
+  };
 
-        // std::string name_mesh = "naca_" + std::to_string(i) + ".msh";
-        //std::string name_mesh = "WireWire_" + std::to_string(i) + ".msh";
-        std::string name_mesh = "structured_naca_2.msh";
-      
-        std::string filename = "../output/meshes/"+name_mesh;
-        std::cout <<"Reading the mesh from " << filename << std::endl;
-        std::ifstream input_file(filename);
-        GridIn<2>       grid_in;
-        grid_in.attach_triangulation(tria);           
-        grid_in.read_msh(input_file);                 
+  const std::string input = s_data.simulation_specification.mesh_TAG;
+  auto iter = stringToCase.find(input);
 
-        const types::manifold_id emitter = 3; 
-        const types::manifold_id collector = 4;       
-       
-        const double distance_emitter_collector = s_data.geometrical_parameters.distance_emitter_collector;
-        const double r_emi = s_data.geometrical_parameters.emitter_radius[i];
-        double X = -distance_emitter_collector - r_emi; 
-        const Point<2> center(X,0.0);
+  if (iter != stringToCase.end()) {
+        switch (iter->second) {
 
-        SphericalManifold<2> emitter_manifold(center);
+            case 1:{
 
-        
+                std::string name_mesh = s_data.simulation_specification.mesh_name;
 
-        CollectorGeometry<2> collector_manifold; // QUA USI LA CLASSE PER IL PROFILO NACA
+                std::string filename = "../meshes/"+name_mesh;
+
+                std::cout <<"   Reading the mesh from " << filename << std::endl;
+
+                std::ifstream input_file(filename);
+                GridIn<2>       grid_in;
+                grid_in.attach_triangulation(tria);           
+                grid_in.read_msh(input_file);                 
+
+                const types::manifold_id emitter = 3; 
+                const types::manifold_id collector = 4;       
+
+                const double distance_emitter_collector = s_data.geometrical_parameters.naca.distance_emitter_collector;
+                const double r_emi = s_data.geometrical_parameters.naca.emitter_radius;
+                double X = -distance_emitter_collector - r_emi; 
+                const Point<2> center(X,0.0);
+
+                SphericalManifold<2> emitter_manifold(center);
+
+                
+
+                CollectorGeometry<2> collector_manifold; // QUA USI LA CLASSE PER IL PROFILO NACA              
+
+                tria.set_all_manifold_ids_on_boundary(3, emitter);
+                tria.set_manifold(emitter, emitter_manifold);
+                tria.set_all_manifold_ids_on_boundary(4, collector);
+                tria.set_manifold(collector, collector_manifold);
+                
+                std::cout  << "   Active cells: " << tria.n_active_cells() << std::endl;
+
+                break;
+            }
 
 
-        // for wire wire simulation
-        //const double r_col = 1e-3;
-        //const Point<2> center2(r_col,0.0);
+            case 2:{
 
-        //SphericalManifold<2> collector_manifold(center2);               
+                std::string name_mesh = s_data.simulation_specification.mesh_name;
 
-        tria.set_all_manifold_ids_on_boundary(3, emitter);
-        tria.set_manifold(emitter, emitter_manifold);
-        tria.set_all_manifold_ids_on_boundary(4, collector);
-        tria.set_manifold(collector, collector_manifold);
-        
-        std::cout  << "Active cells: " << tria.n_active_cells() << std::endl;
+                std::string filename = "../meshes/"+name_mesh;
 
-  }else{ //NL Poisson
+                std::cout <<"   Reading the mesh from " << filename << std::endl;
 
-        const std::string filename = "../output/meshes/Structured_Square.msh"; //remember: you run from build directory
+                std::ifstream input_file(filename);
+                GridIn<2>       grid_in;
+                grid_in.attach_triangulation(tria);           
+                grid_in.read_msh(input_file);                 
 
-        ConditionalOStream pcout(std::cout, (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0));
+                const types::manifold_id emitter = 3; 
+                const types::manifold_id collector = 4;       
 
-        std::ifstream input_file(filename);
+                const double distance_emitter_collector = s_data.geometrical_parameters.ww.distance_emitter_collector;
+                const double r_emi = s_data.geometrical_parameters.ww.emitter_radius;
+                const double r_col = s_data.geometrical_parameters.ww.collector_radius;
 
-        if (!input_file.is_open())
-        {
-          std::cerr << "Errore: impossibile aprire il file di mesh." << std::endl;
-          return;
+                double X = -distance_emitter_collector - r_emi; 
+                const Point<2> center(X,0.0);
+
+                SphericalManifold<2> emitter_manifold(center);
+
+                const Point<2> center2(r_col,0.0);
+
+                SphericalManifold<2> collector_manifold(center2);               
+
+                tria.set_all_manifold_ids_on_boundary(3, emitter);
+                tria.set_manifold(emitter, emitter_manifold);
+                tria.set_all_manifold_ids_on_boundary(4, collector);
+                tria.set_manifold(collector, collector_manifold);
+                
+                std::cout  << "   Active cells: " << tria.n_active_cells() << std::endl;
+                break;
+            }
+
+
+            case 3:{
+                            
+                std::string name_mesh = s_data.simulation_specification.mesh_name;
+                std::string filename = "../meshes/" + name_mesh;
+
+                std::cout << "   Reading the mesh from " << filename << std::endl;
+                std::ifstream input_file(filename);
+
+                // Attacca e leggi la mesh
+                GridIn<2> grid_in;
+                grid_in.attach_triangulation(tria);
+                grid_in.read_msh(input_file);
+
+                // Identificatori per emitter e collector
+                const types::manifold_id emitter = 3;
+                const types::manifold_id collector = 4;
+
+                // Definire il centro comune per le circonferenze concentriche
+                const Point<2> center(0.0, 0.0);  
+
+                // Definire i manifold per emitter e collector
+                SphericalManifold<2> emitter_manifold(center);
+                SphericalManifold<2> collector_manifold(center);  // Stesso centro, ma raggi differenti per l'emitter e il collector
+
+                // Impostare i manifold sulle superfici delle due circonferenze
+                tria.set_all_manifold_ids_on_boundary(3, emitter);  // Imposta ID per la superficie dell'emitter
+                tria.set_manifold(emitter, emitter_manifold);        // Associa il manifold dell'emitter
+                tria.set_all_manifold_ids_on_boundary(4, collector); // Imposta ID per la superficie del collector
+                tria.set_manifold(collector, collector_manifold);    // Associa il manifold del collector
+
+                std::cout << "   Active cells: " << tria.n_active_cells() << std::endl;
+
+                break;
+            }
+
+
+            default:{
+                std::cout << "   This TAG does not exists\n";
+                break;
+            }
+
+
         }
-
-        pcout <<"Reading the mesh from " << filename << std::endl;
-        GridIn<2>  grid_in; //This class implements an input mechanism for grid data. It allows to read a grid structure into a triangulation object
-        grid_in.attach_triangulation(tria); //we pass to grid_in our (empty) triangulation
-        grid_in.read_msh(input_file); // read the msh file
-        pcout << " Grid read correctly "<< std::endl;
-
   }
+
+ 
 }
