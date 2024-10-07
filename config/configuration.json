@@ -17,8 +17,7 @@
     "N_min":1.0e+9,
     "Mm": 29.0e-3,
     "Avo": 6.022e+23,
-    "Ve":2.0e+4,
-    "theta":0.0
+    "Ve":2.0e+4
   },
   "geometrical_parameters": {
 

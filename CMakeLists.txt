@@ -30,20 +30,20 @@ ENDIF()
 
 
 # Try to find Gmsh automatically first
-find_program(GMSH_EXECUTABLE NAMES gmsh)
+#find_program(GMSH_EXECUTABLE NAMES gmsh)
 
 # If Gmsh is not found automatically, fall back to the manually specified path
-if(NOT GMSH_EXECUTABLE)
-    set(GMSH_EXECUTABLE "/home/giacomo/Lavoro/gmsh-4.11.1-Linux64/bin/gmsh") # SPECIFICO NOSTRO
-endif()
+#if(NOT GMSH_EXECUTABLE)
+#    set(GMSH_EXECUTABLE "/home/giacomo/Lavoro/gmsh-4.11.1-Linux64/bin/gmsh") # SPECIFICO NOSTRO
+#endif()
 
 # Check if the executable exists at this point (either automatically found or manually set)
-if(NOT EXISTS ${GMSH_EXECUTABLE})
-    message(FATAL_ERROR "Gmsh executable not found. Please install Gmsh or verify the GMSH_EXECUTABLE path.")
-endif()
+#if(NOT EXISTS ${GMSH_EXECUTABLE})
+#    message(FATAL_ERROR "Gmsh executable not found. Please install Gmsh or verify the GMSH_EXECUTABLE path.")
+#endif()
 
 # Print the path for debugging
-message(STATUS "GMSH executable found at ${GMSH_EXECUTABLE}")
+#message(STATUS "GMSH executable found at ${GMSH_EXECUTABLE}")
 
 
 
