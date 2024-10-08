@@ -142,4 +142,93 @@ Tensor<1,2> get_emitter_normal(const Point<2> a);
 
 
 
+// ESPERIMENTO CON TEMPLATE PER LE BCS
+template <int dim>
+class DynamicBoundaryValues : public Function<dim>
+{
+public:
+
+    DynamicBoundaryValues(const PETScWrappers::MPI::Vector &vec_1, 
+                          const PETScWrappers::MPI::Vector &vec_2,
+                          const PETScWrappers::MPI::Vector &vec_3,
+                          const DoFHandler<dim> &dh,
+                          const MappingQ1<dim>  &map,
+                          const data_struct &d): 
+    Function<dim>(), pot(vec_1),ion(vec_2),old_ion(vec_3), dof_handler(dh), mapping(map), m_data(d){}
+
+    virtual double value(const dealii::Point<dim> &p, const unsigned int component = 0) const override;
+    
+private:
+    const PETScWrappers::MPI::Vector &pot;
+    const PETScWrappers::MPI::Vector &ion;
+    const PETScWrappers::MPI::Vector &old_ion;
+    const DoFHandler<dim> &dof_handler;
+    const MappingQ1<dim>  &mapping;
+    const data_struct &m_data;
+};
+
+
+template <int dim>
+double DynamicBoundaryValues<dim>::value(const Point<dim> & p,const unsigned int component) const 
+{ 
+
+const double E_ON  = m_data.electrical_parameters.E_ON;
+const double E_ref = m_data.electrical_parameters.E_ref;
+const double N_ref = m_data.electrical_parameters.N_ref;
+const double N_min = m_data.electrical_parameters.N_min;
+
+double theta;
+const double k_min = 0.5;
+const double k_max = 2;
+
+const double ion_norm = ion.l2_norm();
+const double old_ion_norm = old_ion.l2_norm();
+const double condition = ion_norm / old_ion_norm;
+
+if(condition <= k_max && condition >= k_min){
+    theta = 1;
+}
+
+if(condition > k_max){
+   theta = (k_max -1)/(condition -1);
+}
+
+if(condition < k_min){
+   theta = (k_min -1)/(condition -1);
+}
+
+std::cout<<"theta is: "<<theta<<std::endl;
+
+/*
+Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_1(dof_handler, pot, mapping);
+Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_2(dof_handler, ion, mapping);
+
+Tensor<1,dim> grad_pot = solution_as_function_object_1.gradient(p);      //gradiente del potenziale in p
+const double ion_density_value = solution_as_function_object_2.value(p); //valore della densità nel punto p
+Tensor<1,dim> normal = get_emitter_normal(p);                            //versore normale nel punto p
+
+const double En = grad_pot*normal; // campo elettrico normale in p: gradiente del potenziale * normale
+
+const double kappa_over_alpha = N_ref*std::exp((En-E_ON)/E_ref);
+
+const double n = std::max(N_min, kappa_over_alpha);
+
+const double scalar = En*ion_density_value;
+
+const double returned_value = theta*n*scalar + comp_theta*ion_density_value;
+
+return returned_value;
+*/
+Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_1(dof_handler, ion, mapping);
+Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_2(dof_handler, old_ion, mapping);
+
+const double ion_value = solution_as_function_object_1.value(p);
+const double old_ion_value = solution_as_function_object_2.value(p);
+
+const double value = theta*old_ion_value +(1-theta)*ion_value;
+
+return value;
+
+}
+
 #include "drift_diffusion_impl.hpp"
