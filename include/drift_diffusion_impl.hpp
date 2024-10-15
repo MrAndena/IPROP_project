@@ -301,10 +301,17 @@ auto boundary_evaluator = [&] (const Point<dim> &p) //lambda function
 ion_constraints.clear();
 ion_constraints.reinit(locally_relevant_dofs);
 VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
-VectorTools::interpolate_boundary_values(dof_handler,4, Functions::ConstantFunction<dim>(N_min), ion_constraints); //collector
 ion_constraints.close();
 */
 // BCS 2
+/*
+ion_constraints.clear();
+ion_constraints.reinit(locally_relevant_dofs);
+VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
+VectorTools::interpolate_boundary_values(dof_handler,4, Functions::ConstantFunction<dim>(N_min), ion_constraints); //collector
+ion_constraints.close();
+*/
+// BCS 3
 
 ion_constraints.clear();
 ion_constraints.reinit(locally_relevant_dofs);
@@ -344,8 +351,8 @@ double theta;
 const double k_min = 0.9;
 const double k_max = 1.1;
 
-const double ion_norm = ion_density.l2_norm();
-const double old_ion_norm = old_ion_density.l2_norm();
+const double ion_norm = ion_density.linfty_norm();
+const double old_ion_norm = old_ion_density.linfty_norm();
 const double condition = ion_norm / old_ion_norm;
 
 
