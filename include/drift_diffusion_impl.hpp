@@ -8,7 +8,7 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , fe(1) //fe for poisson / DD
   , dof_handler(tria) //dof h for poisson / DD
   , mapping() // mapping for poisson / DD
-  , timestep(1e-5) // timestep for the DD algorithm
+  , timestep(1e-4) // timestep for the DD algorithm
 {}
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1019,7 +1019,7 @@ void drift_diffusion<dim>::run()
   const unsigned int max_it = 1e+3;    // riferito al gummel algorithm
   const unsigned int max_steps = 500;  // riferito al time loop
 
-  const double time_tol = 8.5e-2;    // riferito al time loop
+  const double time_tol = 1e-3 /*8.5e-2*/;    // riferito al time loop
   const double tol = 1.e-9;         // tolleranza poisson newton
 
   double time_err = 1. + time_tol; // error time loop
