@@ -284,9 +284,9 @@ auto boundary_evaluator = [&] (const Point<dim> &p) //lambda function
 
   const double En = grad_U*normal;
 
-  const double EXP = std::exp((En-E_ON)/E_ref); 
+  const double EXP = std::exp((-En-E_ON)/E_ref); 
 
-  const double value =  N_ref * EXP;
+  const double value =  N_ref * EXP; 
 
   const double n = std::max(N_min, value);
 
@@ -295,10 +295,28 @@ auto boundary_evaluator = [&] (const Point<dim> &p) //lambda function
 };
 
 
-// DENSITY IONS CONSTRAINTS 
+// DENSITY IONS CONSTRAINTS
+// BCS 1 : DANNO LO STESSO RISULTATO LE DUE BCS
+/*
 ion_constraints.clear();
 ion_constraints.reinit(locally_relevant_dofs);
 VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
+ion_constraints.close();
+*/
+// BCS 2
+/*
+ion_constraints.clear();
+ion_constraints.reinit(locally_relevant_dofs);
+VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
+VectorTools::interpolate_boundary_values(dof_handler,4, Functions::ConstantFunction<dim>(N_min), ion_constraints); //collector
+ion_constraints.close();
+*/
+// BCS 3
+
+ion_constraints.clear();
+ion_constraints.reinit(locally_relevant_dofs);
+VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
+VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //collector
 ion_constraints.close();
 
 
@@ -329,15 +347,15 @@ template <int dim>
 void drift_diffusion<dim>::update_ion_boundary_condition(){
 
 
-double theta=0.2;
-const double k_min = 0.5;
-const double k_max = 2;
+double theta;
+const double k_min = 0.9;
+const double k_max = 1.1;
 
 const double ion_norm = ion_density.linfty_norm();
 const double old_ion_norm = old_ion_density.linfty_norm();
 const double condition = ion_norm / old_ion_norm;
 
-/*
+
 if(condition <= k_max && condition >= k_min){
     theta = 1;
 }
@@ -349,12 +367,14 @@ if(condition > k_max){
 if(condition < k_min){
    theta = (k_min -1)/(condition -1);
 }
-*/
+
+pcout<<" theta is: "<<theta<<std::endl;
 
 
 PETScWrappers::MPI::Vector temp;
 temp.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
 temp = old_ion_density;
+
 // Corona inception condition: boundary condition for ion density
 Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_1(dof_handler, ion_density, mapping);
 Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_2(dof_handler, temp, mapping);
@@ -384,6 +404,7 @@ ion_constraints.close();
 */
 ion_constraints.clear();
 VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
+VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //collector
 ion_constraints.close();
 
 DynamicSparsityPattern ion_dsp(locally_relevant_dofs);
@@ -1019,7 +1040,7 @@ void drift_diffusion<dim>::run()
   const unsigned int max_it = 1e+3;    // riferito al gummel algorithm
   const unsigned int max_steps = 500;  // riferito al time loop
 
-  const double time_tol = 1e-3 /*8.5e-2*/;    // riferito al time loop
+  const double time_tol = 1.0e-3;    // riferito al time loop
   const double tol = 1.e-9;         // tolleranza poisson newton
 
   double time_err = 1. + time_tol; // error time loop
