@@ -8,7 +8,7 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , fe(1) //fe for poisson / DD
   , dof_handler(tria) //dof h for poisson / DD
   , mapping() // mapping for poisson / DD
-  , timestep(1e-4) // timestep for the DD algorithm
+  , timestep(1e-2) // timestep for the DD algorithm
 {}
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -36,10 +36,19 @@ poisson_rhs.reinit(locally_owned_dofs, mpi_communicator);                       
 Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     //ghosted Electric field X
 Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     //ghosted Electric field Y
 
+std::unordered_map<std::string, int> stringToCase{
+  {"NACA", 1},
+  {"WW", 2},
+  {"CYL", 3}
+  };
+
+const std::string input = m_data.simulation_specification.mesh_TAG;
+auto iter = stringToCase.find(input);
 
 // ZERO_CONSTRAINTS FOR NEWTON POISSON PROBLEM (coerente con il nostro modo di procedere)
 zero_constraints_poisson.clear();
 zero_constraints_poisson.reinit(locally_relevant_dofs);
+
 //VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ZeroFunction<dim>(), zero_constraints_poisson); //emitter
 //VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), zero_constraints_poisson); // collector
 zero_constraints_poisson.close(); 
@@ -48,8 +57,42 @@ zero_constraints_poisson.close();
 // NON ZERO CONSTRAINTS FOR THE INITIAL SYSTEM
 constraints_poisson.clear();
 constraints_poisson.reinit(locally_relevant_dofs);
-VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Ve), constraints_poisson); //emitter
-VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson); // collector
+                
+if (iter != stringToCase.end()) {
+    switch (iter->second) {
+
+        case 3:{
+            VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Ve), constraints_poisson); //emitter
+            VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson); // collector
+
+            break;
+        }
+
+        case 2:{
+
+            // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), constraints_poisson);   // Up and down
+            VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Ve), constraints_poisson);    // Emitter
+            VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson);   // Collector
+            // VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ZeroFunction<dim>(), constraints_poisson);   // Inlet
+            // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), constraints_poisson);   // Outlet
+
+            break;
+        }
+
+
+        case 1:{
+
+            break;
+        }
+
+
+        default:{
+            std::cout << "   This TAG does not exists\n";
+            break;
+        }
+    }
+  }
+
 constraints_poisson.close();
 
 
@@ -295,6 +338,17 @@ auto boundary_evaluator = [&] (const Point<dim> &p) //lambda function
 };
 
 
+std::unordered_map<std::string, int> stringToCase{
+  {"NACA", 1},
+  {"WW", 2},
+  {"CYL", 3}
+  };
+
+const std::string input = m_data.simulation_specification.mesh_TAG;
+auto iter = stringToCase.find(input);
+
+const double N_0 = m_data.electrical_parameters.stratosphere ? 2.2e-3 : 0.5e-3; // [m^-3] ambient ion density 
+
 // DENSITY IONS CONSTRAINTS
 // BCS 1 : DANNO LO STESSO RISULTATO LE DUE BCS
 /*
@@ -315,9 +369,46 @@ ion_constraints.close();
 
 ion_constraints.clear();
 ion_constraints.reinit(locally_relevant_dofs);
-VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
-VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //collector
+
+
+if (iter != stringToCase.end()) {
+    switch (iter->second) {
+
+        case 3:{
+            VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints); //emitter
+            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints); //collector
+
+            break;
+        }
+
+        case 2:{
+
+            // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), ion_constraints);   // Up and down
+            VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);    // Emitter
+            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);  // Collector
+            VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ConstantFunction<dim>(N_0), ion_constraints);   // Inlet
+            // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), ion_constraints);   // Outlet
+
+            break;
+        }
+
+
+        case 1:{
+
+            break;
+        }
+
+
+        default:{
+            std::cout << "   This TAG does not exists\n";
+            break;
+        }
+    }
+  }
+
+
 ion_constraints.close();
+
 
 
 DynamicSparsityPattern ion_dsp(locally_relevant_dofs);
@@ -393,6 +484,17 @@ return value;
 };
 
 
+std::unordered_map<std::string, int> stringToCase{
+  {"NACA", 1},
+  {"WW", 2},
+  {"CYL", 3}
+  };
+
+const std::string input = m_data.simulation_specification.mesh_TAG;
+auto iter = stringToCase.find(input);
+
+const double N_0 = m_data.electrical_parameters.stratosphere ? 2.2e-3 : 0.5e-3; // [m^-3] ambient ion density 
+
 // DENSITY IONS CONSTRAINTS
 /*
 ion_constraints.clear();
@@ -402,10 +504,46 @@ VectorTools::interpolate_boundary_values(dof_handler,
                                          ion_constraints); //emitter
 ion_constraints.close();
 */
+
 ion_constraints.clear();
-VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //emitter
-VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<2>(boundary_evaluator), ion_constraints); //collector
+
+if (iter != stringToCase.end()) {
+    switch (iter->second) {
+
+        case 3:{
+            VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints); //emitter
+            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints); //collector
+
+            break;
+        }
+
+        case 2:{
+
+            // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), ion_constraints);   // Up and down
+            VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);    // Emitter
+            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);  // Collector
+            VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ConstantFunction<dim>(N_0), ion_constraints);   // Inlet
+            // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), ion_constraints);   // Outlet
+
+            break;
+        }
+
+
+        case 1:{
+
+            break;
+        }
+
+
+        default:{
+            std::cout << "   This TAG does not exists\n";
+            break;
+        }
+    }
+  }
+
 ion_constraints.close();
+
 
 DynamicSparsityPattern ion_dsp(locally_relevant_dofs);
 DoFTools::make_sparsity_pattern(dof_handler, ion_dsp, ion_constraints, false);
@@ -541,15 +679,67 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
 
     //Apply zero boundary conditions to the whole linear newton poisson system
     //We apply the BCs on tags 3 (emitter) and 4 (collector)
-    
-    std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
 
-    VectorTools::interpolate_boundary_values(mapping, dof_handler,3, Functions::ZeroFunction<dim>(), emitter_boundary_values);
-    MatrixTools::apply_boundary_values(emitter_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
 
-    VectorTools::interpolate_boundary_values(mapping, dof_handler,4, Functions::ZeroFunction<dim>(), collector_boundary_values);
-    MatrixTools::apply_boundary_values(collector_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
-    
+    std::unordered_map<std::string, int> stringToCase{
+      {"NACA", 1},
+      {"WW", 2},
+      {"CYL", 3}
+      };
+
+    const std::string input = m_data.simulation_specification.mesh_TAG;
+    auto iter = stringToCase.find(input);
+
+
+    if (iter != stringToCase.end()) {
+    switch (iter->second) {
+
+        case 3:{
+            std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
+
+            VectorTools::interpolate_boundary_values(mapping, dof_handler,3, Functions::ZeroFunction<dim>(), emitter_boundary_values);
+            MatrixTools::apply_boundary_values(emitter_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+            VectorTools::interpolate_boundary_values(mapping, dof_handler,4, Functions::ZeroFunction<dim>(), collector_boundary_values);
+            MatrixTools::apply_boundary_values(collector_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+            break;
+        }
+
+        case 2:{
+            std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values, up_down_boundary_values, inlet_boundary_values, outlet_boundary_values;
+
+            VectorTools::interpolate_boundary_values(mapping, dof_handler,3, Functions::ZeroFunction<dim>(), emitter_boundary_values);
+            MatrixTools::apply_boundary_values(emitter_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+            VectorTools::interpolate_boundary_values(mapping, dof_handler,4, Functions::ZeroFunction<dim>(), collector_boundary_values);
+            MatrixTools::apply_boundary_values(collector_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+            // VectorTools::interpolate_boundary_values(mapping, dof_handler,0, Functions::ZeroFunction<dim>(), up_down_boundary_values);
+            // MatrixTools::apply_boundary_values(up_down_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+            // VectorTools::interpolate_boundary_values(mapping, dof_handler,1, Functions::ZeroFunction<dim>(), inlet_boundary_values);
+            // MatrixTools::apply_boundary_values(inlet_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+            // VectorTools::interpolate_boundary_values(mapping, dof_handler,2, Functions::ZeroFunction<dim>(), outlet_boundary_values);
+            // MatrixTools::apply_boundary_values(outlet_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+            break;
+        }
+
+
+        case 1:{
+
+            break;
+        }
+
+
+        default:{
+            std::cout << "   This TAG does not exists\n";
+            break;
+        }
+      }
+    }
 
     //Solve poisson system problem
     const double coeff = 1e-3;
@@ -913,78 +1103,90 @@ void drift_diffusion<dim>::perform_drift_diffusion_fixed_point_iteration_step() 
 template <int dim>
 void drift_diffusion<dim>::evaluate_electric_field()
 {
+  // Inizializzazione dei vettori per i campi elettrici
+  // Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);      
+  // Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
 
-  Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
-  Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     
+  const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
 
-  const unsigned int 		dofs_per_cell = fe.n_dofs_per_cell();
+  // Uso di un vettore MPI per global_dof_hits
+  PETScWrappers::MPI::Vector global_dof_hits(locally_owned_dofs, mpi_communicator); 
 
-  std::vector<double>		global_dof_hits(dof_handler.n_dofs()); //sicuro funzioni ? noi dobbiamo mettere quelli del processore
+  PETScWrappers::MPI::Vector el_field_X(locally_owned_dofs, mpi_communicator);
+  PETScWrappers::MPI::Vector el_field_Y(locally_owned_dofs, mpi_communicator);
 
-  PETScWrappers::MPI::Vector		el_field_X(locally_owned_dofs, mpi_communicator);
-  PETScWrappers::MPI::Vector		el_field_Y(locally_owned_dofs, mpi_communicator);
+  QTrapezoid<dim-1> iv_quadrature;
+  FEInterfaceValues<dim> fe_iv(fe, iv_quadrature, update_gradients);
 
-	QTrapezoid<dim-1>			    iv_quadrature;
-	FEInterfaceValues<dim> 		fe_iv(fe, iv_quadrature, update_gradients);
+  const unsigned int n_q_points = iv_quadrature.size();
+  std::vector<Tensor<1,dim>> iv_gradients(n_q_points);
 
-	const unsigned int 		      n_q_points = iv_quadrature.size();
-  std::vector<Tensor<1,dim>> 	iv_gradients(n_q_points);
+  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
-	std::vector<types::global_dof_index> 	local_dof_indices(dofs_per_cell);
-    
+  // Loop sulle celle attive
+  for (auto &cell : dof_handler.active_cell_iterators())
+  {
+    if (cell->is_locally_owned())
+    {
+      for (const auto face_index : GeometryInfo<dim>::face_indices())
+      {
+        fe_iv.reinit(cell, face_index);
+        local_dof_indices = fe_iv.get_interface_dof_indices();
+        fe_iv.get_average_of_function_gradients(potential, iv_gradients);
 
-	for (auto &cell : dof_handler.active_cell_iterators()){
+        for (const auto q : fe_iv.quadrature_point_indices()) 
+        {
+          for (const auto i : fe_iv.dof_indices()) 
+          {
+            // Incrementiamo global_dof_hits per tenere traccia del numero di contributi
+            global_dof_hits[local_dof_indices[i]] += 1.0;
 
-    if (cell->is_locally_owned()){
-      
-      for (const auto face_index : GeometryInfo<dim>::face_indices()){
-
-            fe_iv.reinit(cell, face_index);
-            local_dof_indices = fe_iv.get_interface_dof_indices();
-
-            fe_iv.get_average_of_function_gradients(potential, iv_gradients);
-
-            for (const auto q : fe_iv.quadrature_point_indices()) {
-              for (const auto i : fe_iv.dof_indices()) {
-
-                    global_dof_hits[local_dof_indices[i]] += 1.;
-
-                    for (unsigned int d = 0; d < dim; ++d) {
-
-                      if (d == 0)
-                        el_field_X(local_dof_indices[i]) += - iv_gradients[q][d]; //-grad_phi_i[d] / n_q_points;
-                      else if (d == 1)
-                        el_field_Y(local_dof_indices[i]) +=  - iv_gradients[q][d]; // * (J_inverse[d] * shape_gradient) * dx;
-                      else
-                        Assert(false, ExcNotImplemented());
-                    }
-
-              }
+            for (unsigned int d = 0; d < dim; ++d) 
+            {
+              if (d == 0)
+                el_field_X(local_dof_indices[i]) += -iv_gradients[q][d]; // Campo elettrico in X
+              else if (d == 1)
+                el_field_Y(local_dof_indices[i]) += -iv_gradients[q][d]; // Campo elettrico in Y
+              else
+                Assert(false, ExcNotImplemented());
             }
           }
-      
+        }
+      }
     }
-   }
-
-   el_field_X.compress(VectorOperation::add);
-   el_field_Y.compress(VectorOperation::add);
-
-  for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter){ 
-
-    el_field_X[*iter] /= std::max(1., global_dof_hits[*iter]);
-    el_field_Y[*iter] /= std::max(1., global_dof_hits[*iter]);
-
   }
-  // nonostante "global_dof" sia lungo tutti i dof, noi contorlliamo solo quelli definiti da iter locali
 
-   el_field_X.compress(VectorOperation::insert);
-   el_field_Y.compress(VectorOperation::insert);
+  // Compressione parallela (somma dei valori)
+  el_field_X.compress(VectorOperation::add);
+  el_field_Y.compress(VectorOperation::add);
+  global_dof_hits.compress(VectorOperation::add);
 
-   Field_X = el_field_X;
-   Field_Y = el_field_Y;
+  // Aggiornamento delle ghost cells (sincronizzazione tra processori)
+  el_field_X.update_ghost_values();
+  el_field_Y.update_ghost_values();
+  global_dof_hits.update_ghost_values();
 
-   
+  // Divisione del campo elettrico per il numero di contributi in ogni DOF
+  for (auto iter = locally_owned_dofs.begin(); iter != locally_owned_dofs.end(); ++iter)
+  {
+    // Estrai il valore dal vettore MPI prima di utilizzarlo in std::max
+    const double hit_count = global_dof_hits[*iter];
+
+    el_field_X[*iter] /= std::max(1.0, hit_count);  // Dividi per hit_count, con protezione su 1.0
+    el_field_Y[*iter] /= std::max(1.0, hit_count);  // Dividi per hit_count, con protezione su 1.0
+  }
+
+  // Compressione con inserimento per garantire che i valori siano consistenti sui processori
+  el_field_X.compress(VectorOperation::insert);
+  el_field_Y.compress(VectorOperation::insert);
+
+  // Assegno i valori finali ai campi elettrici
+  Field_X = el_field_X;
+  Field_Y = el_field_Y;
 }
+
+
+
 //------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 void drift_diffusion<dim>::run()
