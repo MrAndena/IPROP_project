@@ -20,6 +20,17 @@ void drift_diffusion<dim>::setup_poisson()
 //fix the constant
 double const Ve = m_data.electrical_parameters.Ve;
 
+const double Re = 30e-5; // ??? DA AUTOMATIZZARE CON JSON
+const double E_ON = m_data.electrical_parameters.E_ON;
+const double p_amb = m_data.electrical_parameters.stratosphere ? 5474 : 101325; 
+const double T = m_data.electrical_parameters.stratosphere ? 217. : 303.; // [K] fluid temperature
+const double delta = p_amb/101325*298/T;                                       
+const double eps = 1.; // wire surface roughness correction coefficient
+const double Ep = E_ON*delta*eps*(1+0.308/std::sqrt(Re*1.e+2*delta));
+
+const double Vi = Ve - Ep*Re*log(Ep/E_ON); // [V] voltage on ionization region boundary
+
+
 dof_handler.distribute_dofs(fe);
 
 // INDEX SETS INITIALIZATION
@@ -71,7 +82,7 @@ if (iter != stringToCase.end()) {
         case 2:{
 
             // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), constraints_poisson);   // Up and down
-            VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Ve), constraints_poisson);    // Emitter
+            VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Vi), constraints_poisson);    // Emitter
             VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson);   // Collector
             // VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ZeroFunction<dim>(), constraints_poisson);   // Inlet
             // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), constraints_poisson);   // Outlet
@@ -385,7 +396,7 @@ if (iter != stringToCase.end()) {
 
             // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), ion_constraints);   // Up and down
             VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);    // Emitter
-            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);  // Collector
+            // VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);  // Collector
             VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ConstantFunction<dim>(N_0), ion_constraints);   // Inlet
             // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), ion_constraints);   // Outlet
 
