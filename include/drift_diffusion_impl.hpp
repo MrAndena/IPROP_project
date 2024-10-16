@@ -51,7 +51,7 @@ std::unordered_map<std::string, int> stringToCase{
   {"NACA", 1},
   {"WW", 2},
   {"CYL", 3}
-  };
+};
 
 const std::string input = m_data.simulation_specification.mesh_TAG;
 auto iter = stringToCase.find(input);
@@ -59,7 +59,6 @@ auto iter = stringToCase.find(input);
 // ZERO_CONSTRAINTS FOR NEWTON POISSON PROBLEM (coerente con il nostro modo di procedere)
 zero_constraints_poisson.clear();
 zero_constraints_poisson.reinit(locally_relevant_dofs);
-
 //VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ZeroFunction<dim>(), zero_constraints_poisson); //emitter
 //VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), zero_constraints_poisson); // collector
 zero_constraints_poisson.close(); 
@@ -73,6 +72,7 @@ if (iter != stringToCase.end()) {
     switch (iter->second) {
 
         case 3:{
+
             VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Ve), constraints_poisson); //emitter
             VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson); // collector
 
@@ -82,7 +82,7 @@ if (iter != stringToCase.end()) {
         case 2:{
 
             // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), constraints_poisson);   // Up and down
-            VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Vi), constraints_poisson);    // Emitter
+            VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Ve), constraints_poisson);    // Emitter
             VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson);   // Collector
             // VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ZeroFunction<dim>(), constraints_poisson);   // Inlet
             // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), constraints_poisson);   // Outlet
@@ -396,7 +396,7 @@ if (iter != stringToCase.end()) {
 
             // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), ion_constraints);   // Up and down
             VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);    // Emitter
-            // VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);  // Collector
+            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);  // Collector
             VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ConstantFunction<dim>(N_0), ion_constraints);   // Inlet
             // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), ion_constraints);   // Outlet
 
