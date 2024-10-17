@@ -8,7 +8,7 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , fe(1) //fe for poisson / DD
   , dof_handler(tria) //dof h for poisson / DD
   , mapping() // mapping for poisson / DD
-  , timestep(1e-2) // timestep for the DD algorithm
+  , timestep(1e-3) // timestep for the DD algorithm
 {}
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -82,7 +82,7 @@ if (iter != stringToCase.end()) {
         case 2:{
 
             // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), constraints_poisson);   // Up and down
-            VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Vi), constraints_poisson);    // Emitter
+            VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Ve), constraints_poisson);    // Emitter
             VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson);   // Collector
             // VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ZeroFunction<dim>(), constraints_poisson);   // Inlet
             // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), constraints_poisson);   // Outlet
