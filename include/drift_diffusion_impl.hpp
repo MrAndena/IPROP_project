@@ -8,7 +8,17 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , fe(1) //fe for poisson / DD
   , dof_handler(tria) //dof h for poisson / DD
   , mapping() // mapping for poisson / DD
+  ,	viscosity(d.navier_stokes.physical_parameters.viscosity)
+  , gamma(d.navier_stokes.physical_parameters.gamma) 
+  , degree(1) 
+  , NS_fe(FE_Q<dim>(degree+1), dim, FE_Q<dim>(degree), 1)
+  , NS_dof_handler(tria)
+  , volume_quad_formula(degree + 2) //non cerano nell'originale
+  , face_quad_formula(degree + 2)   //non cerano nell'originale
+  , NS_mapping() // serve ? nel nostro NS non cè
   , timestep(1e-3) // timestep for the DD algorithm
+  , time_NS(d.navier_stokes) // come in INSIMEX     //DA GESTIRE
+  , timer(mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
 {}
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1196,9 +1206,635 @@ void drift_diffusion<dim>::evaluate_electric_field()
   Field_Y = el_field_Y;
 }
 
+//##################### - Navier-Stokes - #####################################################################################
+
+template <int dim>
+void CompleteProblem<dim>::setup_NS()
+  {
+    
+    //SET UP DOFS
+    NS_dof_handler.distribute_dofs(NS_fe);
+
+	  DoFRenumbering::Cuthill_McKee(NS_dof_handler);  //Renumber the degrees of freedom according to the Cuthill-McKee method.
+
+    std::vector<unsigned int> block_component(dim + 1, 0);   //Musk for the reording 
+    block_component[dim] = 1;
+    DoFRenumbering::component_wise(NS_dof_handler, block_component);
+
+    dofs_per_block = DoFTools::count_dofs_per_fe_block(NS_dof_handler, block_component);
+
+    // Partitioning.
+    unsigned int dof_u = dofs_per_block[0];
+    unsigned int dof_p = dofs_per_block[1];
+
+	  owned_partitioning.resize(2);
+    owned_partitioning[0] = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      //Extract the set of locally owned DoF indices for each component within the mask that are owned by the current processor.
+    owned_partitioning[1] = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
+
+    DoFTools::extract_locally_relevant_dofs(NS_dof_handler,NS_locally_relevant_dofs );     //Extract the set of global DoF indices that are active on the current DoFHandler. This is the union of DoFHandler::locally_owned_dofs() and the DoF indices on all ghost cells.
+
+    relevant_partitioning.resize(2);
+    relevant_partitioning[0] = NS_locally_relevant_dofs.get_view(0, dof_u);
+    relevant_partitioning[1] = NS_locally_relevant_dofs.get_view(dof_u, dof_u + dof_p);
+
+   
+    //MAKE CONSTRAINTS
+    const FEValuesExtractors::Vector velocities(0);
+    const FEValuesExtractors::Scalar vertical_velocity(1);
+    const FEValuesExtractors::Vector vertical_velocity_and_pressure(1);
 
 
-//------------------------------------------------------------------------------------------------------------------------------------------------
+    std::unordered_map<std::string, int> stringToCase{
+      {"NACA", 1},
+      {"WW", 2},
+      {"CYL", 3}
+      };
+
+    const std::string input = m_data.simulation_specification.mesh_TAG;
+    auto iter = stringToCase.find(input);
+
+    nonzero_NS_constraints.clear();
+    nonzero_NS_constraints.reinit(NS_locally_relevant_dofs); 
+
+    DoFTools::make_hanging_node_constraints(NS_dof_handler, nonzero_NS_constraints);  //Lo lasciamo nel caso si faccia refine mesh adattivo
+
+
+    if (iter != stringToCase.end()) {
+    switch (iter->second) {
+
+        case 3:{
+            std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
+
+            VectorTools::interpolate_boundary_values(NS_dof_handler, 3, Functions::ZeroFunction<dim>(dim+1), nonzero_NS_constraints, NS_fe.component_mask(velocities));
+            VectorTools::interpolate_boundary_values(NS_dof_handler, 4, Functions::ZeroFunction<dim>(dim+1), nonzero_NS_constraints, NS_fe.component_mask(velocities));
+
+            break;
+        }
+
+        case 2:{
+              VectorTools::interpolate_boundary_values(NS_dof_handler,                           
+                                            0,                                      // Up and down 
+                                            Functions::ZeroFunction<dim>(dim+1),    // For each degree of freedom at the boundary, its boundary value will be overwritten if its index already exists in boundary_values. Otherwise, a new entry with proper index and boundary value for this degree of freedom will be inserted into boundary_values.
+                                            nonzero_NS_constraints,
+                                            NS_fe.component_mask(vertical_velocity));
+
+
+              VectorTools::interpolate_boundary_values(NS_dof_handler,
+                                                      3,                                      //Emitter                  
+                                                      Functions::ZeroFunction<dim>(dim+1),
+                                                      nonzero_NS_constraints,
+                                                      NS_fe.component_mask(velocities));
+                                                      
+              VectorTools::interpolate_boundary_values(NS_dof_handler,
+                                                      4,                                      //Collector                                     
+                                                      Functions::ZeroFunction<dim>(dim+1),
+                                                      nonzero_NS_constraints,
+                                                      NS_fe.component_mask(velocities));
+                                                      
+              VectorTools::interpolate_boundary_values(NS_dof_handler, 
+                                                      1,                    // Inlet
+                                                      BoundaryValues<dim>(), // Functions::ZeroFunction<dim>(dim+1), 
+                                                      nonzero_NS_constraints, 
+                                                      NS_fe.component_mask(velocities));
+                                                      
+            
+              VectorTools::interpolate_boundary_values(NS_dof_handler,
+                                                      2,                    // Outlet
+                                                      Functions::ZeroFunction<dim>(dim+1),//BoundaryValues<dim>()
+                                                      nonzero_NS_constraints,
+                                                      NS_fe.component_mask(vertical_velocity_and_pressure));  //Vertical velocity and pressure at outlet equal to 0
+
+            break;
+        }
+
+
+        case 1:{
+
+            break;
+        }
+
+
+        default:{
+            std::cout << "   This TAG does not exists\n";
+            break;
+        }
+      }
+    }                         
+    
+    nonzero_NS_constraints.close();
+    
+    
+    zero_NS_constraints.clear();                // The IndexSets of owned velocity and pressure respectively.
+	  zero_NS_constraints.reinit(NS_locally_relevant_dofs);
+
+    DoFTools::make_hanging_node_constraints(NS_dof_handler, zero_NS_constraints);
+
+    if (iter != stringToCase.end()) {
+      switch (iter->second) {
+
+        case 3:{
+            std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
+
+            VectorTools::interpolate_boundary_values(NS_dof_handler, 3, Functions::ZeroFunction<dim>(dim+1), zero_NS_constraints, NS_fe.component_mask(velocities));
+            VectorTools::interpolate_boundary_values(NS_dof_handler, 4, Functions::ZeroFunction<dim>(dim+1), zero_NS_constraints, NS_fe.component_mask(velocities));
+
+            break;
+        }
+
+        case 2:{
+            VectorTools::interpolate_boundary_values(NS_dof_handler,
+                                        0,
+                                        Functions::ZeroFunction<dim>(dim+1),
+                                        zero_NS_constraints,
+                                        NS_fe.component_mask(vertical_velocity));
+            VectorTools::interpolate_boundary_values(NS_dof_handler,
+                                                    3,
+                                                    Functions::ZeroFunction<dim>(dim+1),
+                                                    zero_NS_constraints,
+                                                    NS_fe.component_mask(velocities));
+            VectorTools::interpolate_boundary_values(NS_dof_handler,
+                                                    4,
+                                                    Functions::ZeroFunction<dim>(dim+1),
+                                                    zero_NS_constraints,
+                                                    NS_fe.component_mask(velocities));
+            VectorTools::interpolate_boundary_values(NS_dof_handler,
+                                                    1,
+                                                    Functions::ZeroFunction<dim>(dim+1),
+                                                    zero_NS_constraints,
+                                                    NS_fe.component_mask(velocities));
+            VectorTools::interpolate_boundary_values(NS_dof_handler,
+                                                    2, 
+                                                    Functions::ZeroFunction<dim>(dim+1),
+                                                    zero_NS_constraints,
+                                                    NS_fe.component_mask(vertical_velocity_and_pressure));
+            break;
+        }
+
+
+        case 1:{
+
+            break;
+        }
+
+
+        default:{
+            std::cout << "   This TAG does not exists\n";
+            break;
+        }
+      }
+    }   
+    
+    zero_NS_constraints.close();
+
+
+    pcout << "   Number of active fluid cells: "
+      << triangulation.n_global_active_cells() << std::endl
+      << "   Number of degrees of freedom: " << NS_dof_handler.n_dofs() << " ("
+      << dof_u << '+' << dof_p << ')' << std::endl;
+
+    
+    //INITIALIZE SYSTEM
+    BlockDynamicSparsityPattern dsp(dofs_per_block, dofs_per_block);
+    DoFTools::make_sparsity_pattern(NS_dof_handler, dsp, nonzero_NS_constraints);
+    NS_sparsity_pattern.copy_from(dsp);
+    SparsityTools::distribute_sparsity_pattern(dsp, NS_dof_handler.locally_owned_dofs(), mpi_communicator, NS_locally_relevant_dofs); 
+
+   
+    preconditioner.reset();
+    NS_system_matrix.clear();
+    NS_mass_matrix.clear();
+    pressure_mass_matrix.clear(); 
+
+   
+    NS_system_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
+    NS_solution.reinit(owned_partitioning, relevant_partitioning, mpi_communicator);
+    NS_solution_update.reinit(owned_partitioning, mpi_communicator);
+    NS_system_rhs.reinit(owned_partitioning, mpi_communicator);
+
+
+    NS_mass_matrix.reinit(owned_partitioning, dsp, mpi_communicator);
+
+    // Only the $(1, 1)$ block in the mass schur matrix is used. (B M_u B.T)
+    // Compute the sparsity pattern for mass schur in advance.
+    // The only nonzero block has the same sparsity pattern as $BB^T$.
+    BlockDynamicSparsityPattern schur_dsp(dofs_per_block, dofs_per_block);
+    schur_dsp.block(1, 1).compute_mmult_pattern(NS_sparsity_pattern.block(1, 0), NS_sparsity_pattern.block(0, 1));
+    pressure_mass_matrix.reinit(owned_partitioning, schur_dsp, mpi_communicator);       //We want to reinitialize our matrix with new partitions of data
+
+    //Initialize the NS_solution 
+    PETScWrappers::MPI::BlockVector tmp1;
+    tmp1.reinit(owned_partitioning, mpi_communicator);
+    tmp1 = NS_solution;
+    VectorTools::interpolate(NS_mapping, NS_dof_handler, Functions::ZeroFunction<dim>(dim+1), tmp1);   //Zero initial solution
+    NS_solution = tmp1;
+
+
+    //??Farlo ereditare anche a Vel_X e Vel_Y ??
+   
+    owned_partitioning_u = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      
+    owned_partitioning_p = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
+    
+
+    Vel_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);  //NB dof handler di DD !!! va così
+    Vel_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+
+    pressure.reinit(owned_partitioning_p, mpi_communicator); // lui non da problemi in output, inizializzartlo come VelX e Y??
+  
+  }
+
+
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------
+template <int dim>
+void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
+                                       bool assemble_system)
+{ 
+  
+  TimerOutput::Scope timer_section(timer, "Assemble system");        //Enter the given section in the timer
+
+  if (assemble_system)           //If assemble_system is false i assembly only rhs
+  {
+      NS_system_matrix = 0;
+      NS_mass_matrix = 0;
+  }
+
+  NS_system_rhs = 0;
+
+  FEValues<dim> fe_values(NS_fe,                              //FEValues contains finite element evaluated in quadrature points of a cell.                            
+                          volume_quad_formula,             //It implicitely uses a Q1 mapping
+                          update_values | update_quadrature_points |
+                          update_JxW_values | update_gradients);
+  /*
+  FEFaceValues<dim> fe_face_values(NS_fe,
+                                  face_quad_formula,
+                                  update_values | update_normal_vectors |
+                                  update_quadrature_points |
+                                  update_JxW_values); INUTILE NON VIENE USATO */
+
+  const unsigned int dofs_per_cell = NS_fe.dofs_per_cell;
+  const unsigned int n_q_points = volume_quad_formula.size();
+
+  const FEValuesExtractors::Vector velocities(0);   //Extractor calls velocities that takes the vector in position 0
+  const FEValuesExtractors::Scalar pressure(dim);   //Extractor calls pressure that takes the scalar in position dim
+
+  FullMatrix<double> local_matrix(dofs_per_cell, dofs_per_cell);
+  FullMatrix<double> local_mass_matrix(dofs_per_cell, dofs_per_cell);
+
+  Vector<double> local_rhs(dofs_per_cell);
+
+  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+  std::vector<Tensor<1, dim>> current_velocity_values(n_q_points);     //vector of values of velocity in quadrature points              
+  std::vector<Tensor<2, dim>> current_velocity_gradients(n_q_points);
+  std::vector<double> current_velocity_divergences(n_q_points);
+  std::vector<double> current_pressure_values(n_q_points);
+
+
+  std::vector<double> div_phi_u(dofs_per_cell);
+  std::vector<Tensor<1, dim>> phi_u(dofs_per_cell);
+  std::vector<Tensor<2, dim>> grad_phi_u(dofs_per_cell);
+  std::vector<double> phi_p(dofs_per_cell);
+
+  Tensor<1,dim> f;
+
+  auto ion_cell = dof_handler.begin_active();  
+  const auto ion_endc = dof_handler.end();
+
+  std::vector<types::global_dof_index> ion_local_dof_indices(4);
+
+
+  for (auto cell = NS_dof_handler.begin_active(); cell != NS_dof_handler.end(); ++cell)     //Iterator from the first active cell to the last one
+  {   
+      
+      if (cell->is_locally_owned())
+      {
+          fe_values.reinit(cell);    //Reinitialize the gradients, Jacobi determinants, etc for the given cell of type "iterator into a Triangulation object", and the given finite element.
+
+          if (assemble_system)
+          {
+              local_matrix = 0;
+              local_mass_matrix = 0;
+          } 
+
+          local_rhs = 0;
+          
+          fe_values[velocities].get_function_values(NS_solution,
+                                                    current_velocity_values);     //in current_velocity_values i stored values of NS_solution in quadrature points
+
+          fe_values[velocities].get_function_gradients(NS_solution, 
+                                                       current_velocity_gradients);
+
+          fe_values[velocities].get_function_divergences(NS_solution, 
+                                                         current_velocity_divergences);
+
+          fe_values[pressure].get_function_values(NS_solution,
+                                                  current_pressure_values);
+          if (ion_cell->is_locally_owned())
+          {
+          if (ion_cell != ion_endc){
+        	  ion_cell->get_dof_indices(ion_local_dof_indices);
+          }  else{
+        	  pcout << "Warning! Reached end of ion cells at NS cell " << cell->index() << std::endl;
+          }
+          }
+          // Assemble the system matrix and mass matrix simultaneouly.
+          // The mass matrix only uses the $(0, 0)$ and $(1, 1)$ blocks.
+          
+          for (unsigned int q = 0; q < n_q_points; ++q)
+          { 
+            
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
+            {
+              div_phi_u[k] = fe_values[velocities].divergence(k, q);           //Returns the value of the k-th shape function in q quadrature point
+              grad_phi_u[k] = fe_values[velocities].gradient(k, q);
+              phi_u[k] = fe_values[velocities].value(k, q);
+              phi_p[k] = fe_values[pressure].value(k, q); 
+            }
+        
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            { 
+              if (assemble_system)
+              {
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                { 
+                  
+                  local_matrix(i, j) +=
+                  (viscosity *
+                   scalar_product(grad_phi_u[j], grad_phi_u[i]) -
+                   div_phi_u[i] * phi_p[j] -
+                   phi_p[i] * div_phi_u[j] +
+                   gamma * div_phi_u[j] * div_phi_u[i] +
+                   phi_u[i] * phi_u[j] / time_NS.get_delta_t() //+
+
+                  // phi_u[i] * (current_velocity_gradients[q] * phi_u[j]) +
+                  // phi_u[i] * (grad_phi_u[j] * current_velocity_values[q]) 
+                  ) *
+                  fe_values.JxW(q);
+             
+                  local_mass_matrix(i, j) +=
+                  (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
+                  fe_values.JxW(q);
+                  
+                }
+              }
+
+              const double q0 = m_data.drift_diffusion.physical_parameters.q0;
+
+              const double rho = m_data.drift_diffusion.physical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3
+
+              //const double rho = 1.225; // kg m^-3  //Attenzione: buono solo se non nella stratosphere
+              
+              /*
+              PETScWrappers::MPI::Vector temp_X(locally_owned_dofs, mpi_communicator);
+              PETScWrappers::MPI::Vector temp_Y(locally_owned_dofs, mpi_communicator);
+              PETScWrappers::MPI::Vector temp_ion(locally_owned_dofs, mpi_communicator);
+
+              temp_X = Field_X;
+              temp_Y = Field_Y;
+              temp_ion = ion_density;
+               */
+              
+              if (ion_cell->is_locally_owned())
+              {
+              if (ion_cell != ion_endc && i < 12) {
+                
+                double E_x,E_y,ions;
+                E_x = Field_X(ion_local_dof_indices[i % 3]);  //Mi servono prese da evaluate electric field
+                E_y = Field_Y(ion_local_dof_indices[i % 3]);
+                ions = ion_density(ion_local_dof_indices[i % 3]);
+                f[0] = q0 * E_x / rho * ions;
+                f[1] = q0 * E_y / rho * ions;
+              }
+              }
+              
+              
+              local_rhs(i) -=
+              (viscosity * scalar_product(current_velocity_gradients[q], grad_phi_u[i]) -
+              current_velocity_divergences[q] * phi_p[i] -
+              current_pressure_values[q] * div_phi_u[i] +
+              gamma * current_velocity_divergences[q] * div_phi_u[i] +
+              current_velocity_gradients[q] * current_velocity_values[q] * phi_u[i] -
+              scalar_product(phi_u[i], f))*     // ADDED
+              fe_values.JxW(q);
+              
+            }
+          }
+
+
+          cell->get_dof_indices(local_dof_indices);
+        
+          const AffineConstraints<double> &constraints_used = use_nonzero_constraints ? nonzero_NS_constraints : zero_NS_constraints;
+          
+          if (cell->is_locally_owned())
+          {
+          if (ion_cell != ion_endc){
+        	   ion_cell++;
+          }
+          }
+
+          if (assemble_system)
+          {   
+          
+              constraints_used.distribute_local_to_global(local_matrix,             //In practice this function implements a scatter operation
+                                                          local_rhs,
+                                                          local_dof_indices,        //Contains the corresponding global indexes
+                                                          NS_system_matrix,
+                                                          NS_system_rhs);
+              constraints_used.distribute_local_to_global(
+              local_mass_matrix, local_dof_indices, NS_mass_matrix);
+          }
+          else
+          {
+              constraints_used.distribute_local_to_global(
+              local_rhs, local_dof_indices, NS_system_rhs);
+
+          
+          }
+      }
+  }
+   
+  if (assemble_system)
+  {
+      NS_system_matrix.compress(VectorOperation::add);
+      NS_mass_matrix.compress(VectorOperation::add);
+  }
+
+  NS_system_rhs.compress(VectorOperation::add);
+
+}
+
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------
+template <int dim>
+std::pair<unsigned int, double>
+CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step)
+{
+    if (assemble_system)
+    {
+      preconditioner.reset(new BlockSchurPreconditioner(timer,
+                                                      gamma,
+                                                      viscosity,
+                                                      time_NS.get_delta_t(),
+                                                      owned_partitioning,
+                                                      NS_system_matrix,
+                                                      NS_mass_matrix,
+                                                      pressure_mass_matrix));
+    }
+    
+    double coeff = 0.0 ;   // to avoid to have a tolerance too small
+    if (time_step < 4) {
+        coeff = 1e-5;
+    } else if (time_step >= 4 && time_step < 10) {
+        coeff = 1e-3;
+    } else {
+        coeff = 1e-2;
+    }
+
+    SolverControl solver_control(                                         //Used by iterative methods to determine whether the iteration should be continued
+    NS_system_matrix.m(), coeff * NS_system_rhs.l2_norm(), true);
+
+    SolverBicgstab<PETScWrappers::MPI::BlockVector> bicg(solver_control);
+
+    pcout << "   NS_system_matrix frob norm is " << NS_system_matrix.frobenius_norm() << std::endl;
+    pcout << "   NS_system_rhs l2 norm is " << NS_system_rhs.l2_norm() << std::endl;
+    // The solution vector must be non-ghosted
+    bicg.solve(NS_system_matrix, NS_solution_update, NS_system_rhs, *preconditioner);
+
+    pcout << "   solver di NS fatto: " << NS_solution.l2_norm() << std::endl; 
+
+    const AffineConstraints<double> &constraints_used =
+    use_nonzero_constraints ? nonzero_NS_constraints : zero_NS_constraints;
+    constraints_used.distribute(NS_solution_update);
+
+    return {solver_control.last_step(), solver_control.last_value()};
+}
+
+
+
+
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------
+template <int dim>
+void CompleteProblem<dim>::solve_navier_stokes()
+{
+	evaluate_electric_field();   //Serve ad assembly_NS, crea Field_X e Field_Y
+
+	
+
+	// if (step_number == 1) {   
+	// 	assemble_navier_stokes(true);
+	// 	solve_nonlinear_navier_stokes_step(true);
+	// 	NS_solution = NS_newton_update;
+	// 	nonzero_NS_constraints.distribute(NS_solution);
+	// 	double current_res = NS_newton_update.block(0).linfty_norm();
+	// 	std::cout << "The residual of  the initial guess is " << current_res << std::endl;
+	// }
+
+  NS_solution_update = 0;
+  // Only use nonzero constraints at the very first time step (Così i valori nei constraints non vengono modificati)
+  bool apply_nonzero_constraints = (time_NS.get_timestep() == 1);  //Capire se usare step_number o la classe Time
+
+  // We have to assemble the LHS for the initial two time steps:
+  // once using nonzero_constraints, once using zero_constraints.
+  bool assemble_system = (time_NS.get_timestep() < 3);
+
+  pcout << "   ASSEMBLE NAVIER STOKES SYSTEM ..."  << std::endl;
+  assemble_NS(apply_nonzero_constraints, assemble_system);
+
+
+  pcout << "   SOLVE NAVIER STOKES SYSTEM ..."  << std::endl;
+  auto state = solver_NS(apply_nonzero_constraints, assemble_system, time_NS.get_timestep());
+
+
+  // Note we have to use a non-ghosted vector to do the addition.
+  PETScWrappers::MPI::BlockVector tmp;
+  tmp.reinit(owned_partitioning, mpi_communicator);   //We do this since present solution is a ghost vector so is read-only
+  tmp = NS_solution;
+  tmp += NS_solution_update;
+  NS_solution = tmp;
+
+  pcout << std::scientific << std::left << "   GMRES_ITR = " << std::setw(3)
+      << state.first << "   GMRES_RES = " << state.second << std::endl;
+
+  pcout << "   L2 norm of the present solution: " << NS_solution.l2_norm() << std::endl;
+
+  //CI VIENE UNA SOL NULLA !!! La norma L2 in solver_NS viene zero, qua fuori e-20
+
+
+  //Ho ottenuto la nuova soluzione di NS, spezziamola ora per essere usata dalla parte elettrica
+
+
+  //Questa parte con Vel_X e Y capire se effettivamnete crearli, per pressure possiamo accedervi in modo più intelligente essendo il 
+  //secondo blocco come avevamo fatto anche noi in passato. Il problema è che vengono usati Vel_X e Y in DD. Sicurametne c'è modo più intelligente per accedervi
+
+	pcout << "   Recovering velocity and pressure values for output... " << std::endl;
+
+  //????
+  PETScWrappers::MPI::Vector temp_X;  //NB dof handler di DD !!! va così, come al primo giro
+  PETScWrappers::MPI::Vector temp_Y;
+
+  temp_X.reinit(locally_owned_dofs,  mpi_communicator);
+  temp_Y.reinit(locally_owned_dofs,  mpi_communicator);
+
+  pressure.reinit(owned_partitioning_p, mpi_communicator);
+
+	const unsigned int dofs_per_cell = 4;
+	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+	const unsigned int dofs_per_NS_cell = 22;
+	std::vector<types::global_dof_index> NS_local_dof_indices(dofs_per_NS_cell);
+
+	auto cell = dof_handler.begin_active();    //Numero dof tra DD (ordine 1) e NS (ordine velocità e pressione diversi) sono diversi
+	auto NS_cell = NS_dof_handler.begin_active();
+
+	const auto endc = dof_handler.end();
+	const auto NS_endc = NS_dof_handler.end();
+
+	double vel_max = 0.;  //vel_max non serve da nessuna parte credo, capire se serve calcolarla
+
+	while (cell != endc && NS_cell != NS_endc) {
+    if (cell->is_locally_owned() && NS_cell->is_locally_owned())
+    {
+
+        cell->get_dof_indices(local_dof_indices);
+        NS_cell->get_dof_indices(NS_local_dof_indices);
+
+        for (unsigned int k = 0; k < dofs_per_cell; ++k) {
+
+          const unsigned int ind = local_dof_indices[k];
+
+          temp_X(ind) = NS_solution[NS_local_dof_indices[3*k]]; // Not so sure about this...
+          temp_Y(ind) = NS_solution[NS_local_dof_indices[3*k+1]]; // ... or this...
+          pressure(ind) = NS_solution[NS_local_dof_indices[3*k+2]]; // ... or even this
+          // But they all seem to work in the output!
+
+          // vel_max = std::max(vel_max,Vel_X(ind));
+          vel_max = std::max(vel_max, static_cast<double>(Vel_X(ind)));    //static_cast altrimenti Vel_X(ind) è un tipo dealii::PETScWrappers::internal::VectorReference
+
+        }
+    }
+
+		++cell;
+		++NS_cell;
+
+	}
+
+  temp_X.compress(VectorOperation::insert);
+  temp_Y.compress(VectorOperation::insert);
+  
+  pressure.compress(VectorOperation::insert);
+  
+  Vel_X = temp_X;
+  Vel_Y = temp_Y;
+
+	// cout << "Estimating thrust..." << endl; estimate_thrust();
+}
+
+
+
+
+//############ - RUN AND OUTPUT RESULTS - #######################################################################################################
+
 template <int dim>
 void drift_diffusion<dim>::run()
 {
@@ -1242,6 +1878,9 @@ void drift_diffusion<dim>::run()
   pcout << "   Done !"<<std::endl;
   
 
+  pcout << "   SETUP NAVIER STOKES PROBLEM ... "<< std::endl;
+	setup_NS();
+
   pcout << "   STORE INITIAL CONDITIONS ... ";
   output_results(0);
   pcout << "   Done !"<<std::endl<<std::endl;
@@ -1261,7 +1900,7 @@ void drift_diffusion<dim>::run()
   eta = old_ion_density; // basically eta = N_0 function
 
   // START THE ALGORITHM
-pcout << "   START Time dependent drift_diffusion Loop ... "<< std::endl<<std::endl;
+  pcout << "   START COMPLETE PROBLEM ... "<< std::endl;
 
 while (step_number < max_steps && time_err > time_tol){
     
@@ -1299,11 +1938,13 @@ while (step_number < max_steps && time_err > time_tol){
       
   }
 
+
   if (it >= max_it){
   pcout << "WARNING! DD achieved a relative error " << err << " after " << it << " iterations" << std::endl;
   }
 
   pcout << "   Done !"<< std::endl;
+
 
   pcout << "   UPDATE ION BOUNDARY CONDITIONS ... ";
   update_ion_boundary_condition();
@@ -1318,6 +1959,15 @@ while (step_number < max_steps && time_err > time_tol){
   pcout << "   time error is:  "<<time_err << std::endl<<std::endl;
 
   old_ion_density = ion_density;
+
+
+  if (step_number % 40 == 1){ // NS solution update every 40 timesteps
+
+    pcout << "   START NAVIER STOKES PROBLEM ... "<< std::endl; // FINO A QUA FUNZIONA 
+    solve_navier_stokes();
+
+  }
+
 
   output_results(step_number);
 
@@ -1338,7 +1988,7 @@ data_out.attach_dof_handler(dof_handler);
 std::string base_directory = "../output";
 
 // Directory to store the results of this simulation
-std::string output_directory = base_directory + "/DD_Simulation/";
+std::string output_directory = base_directory + "/NS_DD_Simulation/";
 
 // Ensure the output directory is created (if it doesn't exist)
 if (!std::filesystem::exists(output_directory))
@@ -1347,6 +1997,9 @@ if (!std::filesystem::exists(output_directory))
 }
 
 data_out.add_data_vector(potential, "potential");
+data_out.add_data_vector(pressure, "pressure");
+data_out.add_data_vector(Vel_X, "Vel_X");
+data_out.add_data_vector(Vel_Y, "Vel_Y");
 data_out.add_data_vector(ion_density, "Ion_Density");
 data_out.add_data_vector(Field_X, "Field_X");
 data_out.add_data_vector(Field_Y, "Field_Y");
