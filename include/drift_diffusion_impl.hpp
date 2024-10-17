@@ -20,7 +20,7 @@ void drift_diffusion<dim>::setup_poisson()
 //fix the constant
 double const Ve = m_data.electrical_parameters.Ve;
 
-const double Re = 30e-5; // ??? DA AUTOMATIZZARE CON JSON
+const double Re = 30e-5; // ??? DA AUTOMATIZZARE CON JSON (SI)
 const double E_ON = m_data.electrical_parameters.E_ON;
 const double p_amb = m_data.electrical_parameters.stratosphere ? 5474 : 101325; 
 const double T = m_data.electrical_parameters.stratosphere ? 217. : 303.; // [K] fluid temperature
@@ -962,7 +962,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
             const double l_alpha = std::sqrt(l_12*l_12 + l_24*l_24 - 2*((v1 - v2) * (v4 - v2)) );
             const double l_beta = std::sqrt(l_43*l_43 + l_24*l_24 - 2*((v2 - v4) * (v3 - v4)) );
             
-            /*
+            
             Tensor<1,dim> u_f_1, u_f_2, u_f_3, u_f_4;
             u_f_1[0] = Vel_X(local_dof_indices[2]);
             u_f_1[1] = Vel_Y(local_dof_indices[2]);
@@ -971,24 +971,24 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
             u_f_3[0] = Vel_X(local_dof_indices[0]);
             u_f_3[1] = Vel_Y(local_dof_indices[0]);
             u_f_4[0] = Vel_X(local_dof_indices[1]);
-            u_f_4[1] = Vel_Y(local_dof_indices[1]);*/
+            u_f_4[1] = Vel_Y(local_dof_indices[1]);
 
             const Tensor<1,dim> dir_21 = (v1 - v2)/l_12;
             const Tensor<1,dim> dir_42 = (v2 - v4)/l_24;
             const Tensor<1,dim> dir_34 = (v4 - v3)/l_43;
             const Tensor<1,dim> dir_13 = (v3 - v1)/l_31;
 
-            const double alpha21 = /*(u_f_2 * dir_21)/D*l_12*/ + (u1 - u2);
-            const double alpha42 = /*(u_f_4 * dir_42)/D*l_24*/ + (u2 - u4);
-            const double alpha34 = /*(u_f_3 * dir_34)/D*l_43*/ + (u4 - u3);
-            const double alpha13 = /*(u_f_1 * dir_13)/D*l_31*/ + (u3 - u1);
+            const double alpha21 = (u_f_2 * dir_21)/D*l_12 + (u1 - u2);
+            const double alpha42 = (u_f_4 * dir_42)/D*l_24 + (u2 - u4);
+            const double alpha34 = (u_f_3 * dir_34)/D*l_43 + (u4 - u3);
+            const double alpha13 = (u_f_1 * dir_13)/D*l_31 + (u3 - u1);
 
             if (l_alpha >= l_beta) { // l_alpha is the longest diagonal: split by beta
 
                         const double l_23 = side_length(v2,v3);
                         const Tensor<1,dim> dir_23 = (v3 - v2)/l_beta;
 
-                        const double alpha23 = /*(u_f_2 * dir_23)/D*l_23*/ + (u3 - u2);
+                        const double alpha23 = (u_f_2 * dir_23)/D*l_23 + (u3 - u2);
 
                         // Triangle A:
                         A = compute_triangle_matrix(v2,v1,v3, alpha21, alpha13, -alpha23, D);
@@ -1010,7 +1010,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
                         const double l_14 = side_length(v1,v4);
                         const Tensor<1,dim> dir_14 = (v4 - v1)/l_alpha;
 
-                        const double alpha14 = /*(u_f_1 * dir_14)/D*l_14*/ + (u4 - u1);
+                        const double alpha14 = (u_f_1 * dir_14)/D*l_14 + (u4 - u1);
 
                         // Triangle A:
                         A = compute_triangle_matrix(v4,v2,v1, alpha42, alpha21, alpha14, D);
