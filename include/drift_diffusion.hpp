@@ -26,6 +26,9 @@
 #include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/sparse_ilu.h> // ILU preconditioning
 
+#include <deal.II/lac/petsc_solver.h>
+
+
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/matrix_tools.h> // For Laplace Matrix
@@ -36,7 +39,9 @@
 #include <fstream>
 #include <cmath>
 #include "data_struct.hpp"
+#include "BlockSchurPreconditioner.hpp"
 #include "CollectorGeometryNS.hpp"
+
 
 
 
@@ -69,6 +74,12 @@ private:
     void assemble_drift_diffusion_matrix(); // build DD matrix
     void solve_drift_diffusion();  // used inside "perform_dd.." to update ion_density
     void perform_drift_diffusion_fixed_point_iteration_step();  // this method update ion_density
+
+    void setup_NS();
+    void assemble_NS(bool use_nonzero_constraints, bool assemble_system);
+    std::pair<unsigned int, double> solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step);
+    void solve_navier_stokes();
+    // void estimate_thrust();
 
     void evaluate_electric_field(); // usato sia in assemble_DD che in solve_NS 
     void output_results(const unsigned int step); // preso dal nostro DD dovrebbe funzionare dovrebbere essere const method no?
@@ -126,8 +137,61 @@ private:
     PETScWrappers::MPI::Vector ion_density;
     PETScWrappers::MPI::Vector ion_rhs;
     PETScWrappers::MPI::Vector eta; 
-    
-    //mutable TimerOutput timer;
+
+
+    // NAVIER-STOKES PART
+
+    // Vectors
+    PETScWrappers::MPI::Vector Vel_X;  // in NS originale viene usato Block Vector, qua solo vector, perchè spezza le componenti
+    PETScWrappers::MPI::Vector Vel_Y;  // poi però mette anche quello a blocchi
+    PETScWrappers::MPI::Vector pressure;
+
+    PETScWrappers::MPI::Vector current_values; // a che serve ?
+
+    // NS Parameters
+    double viscosity;
+    double gamma;
+    const unsigned int degree;
+
+    // FE - DofHandler and Mapping
+    std::vector<types::global_dof_index> dofs_per_block;
+
+
+    FESystem<dim>    NS_fe;
+    DoFHandler<dim>  NS_dof_handler;
+    QGauss<dim> volume_quad_formula;   // non cera nell'originale complete problem
+    QGauss<dim - 1> face_quad_formula; // non cera nell'originale complete problem
+
+    MappingQ1<dim> NS_mapping; // non c'è nel nostro INSIEMEX
+
+    // Constraints
+    AffineConstraints<double> zero_NS_constraints;
+    AffineConstraints<double> nonzero_NS_constraints;
+
+    // Matrices
+    BlockSparsityPattern      NS_sparsity_pattern;
+    PETScWrappers::MPI::BlockSparseMatrix  NS_system_matrix;
+    PETScWrappers::MPI::BlockSparseMatrix  pressure_mass_matrix;
+    PETScWrappers::MPI::BlockSparseMatrix  NS_mass_matrix;
+
+    // BlockVectors
+    PETScWrappers::MPI::BlockVector NS_solution;
+    PETScWrappers::MPI::BlockVector NS_newton_update; // perchè c'è newton qui?
+    PETScWrappers::MPI::BlockVector NS_solution_update;
+    PETScWrappers::MPI::BlockVector NS_system_rhs;
+
+    std::shared_ptr<BlockSchurPreconditioner> preconditioner; // non c'era nell'originale complete problem
+    std::vector<IndexSet> owned_partitioning;                //  non c'era nell'originale complete problem
+    std::vector<IndexSet> relevant_partitioning;             // non c'era nell'originale complete problem
+
+    IndexSet owned_partitioning_p;
+
+    IndexSet NS_locally_relevant_dofs; //nuovo
+
+
+    double time_NS = 0;
+    double timestep_NS;
+    mutable TimerOutput timer;
     double timestep = 0;
     SparsityPattern      sparsity_pattern_poisson;
 };

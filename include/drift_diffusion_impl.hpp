@@ -8,8 +8,8 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , fe(1) //fe for poisson / DD
   , dof_handler(tria) //dof h for poisson / DD
   , mapping() // mapping for poisson / DD
-  ,	viscosity(d.navier_stokes.physical_parameters.viscosity)
-  , gamma(d.navier_stokes.physical_parameters.gamma) 
+  ,	viscosity(d.fluid_parameters.viscosity)
+  , gamma(d.fluid_parameters.gamma) 
   , degree(1) 
   , NS_fe(FE_Q<dim>(degree+1), dim, FE_Q<dim>(degree), 1)
   , NS_dof_handler(tria)
@@ -17,7 +17,7 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , face_quad_formula(degree + 2)   //non cerano nell'originale
   , NS_mapping() // serve ? nel nostro NS non cè
   , timestep(1e-3) // timestep for the DD algorithm
-  , time_NS(d.navier_stokes) // come in INSIMEX     //DA GESTIRE
+  , timestep_NS(40*1e-3) // come in INSIMEX     //DA GESTIRE
   , timer(mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
 {}
 
@@ -1209,7 +1209,7 @@ void drift_diffusion<dim>::evaluate_electric_field()
 //##################### - Navier-Stokes - #####################################################################################
 
 template <int dim>
-void CompleteProblem<dim>::setup_NS()
+void drift_diffusion<dim>::setup_NS()
   {
     
     //SET UP DOFS
@@ -1291,11 +1291,11 @@ void CompleteProblem<dim>::setup_NS()
                                                       nonzero_NS_constraints,
                                                       NS_fe.component_mask(velocities));
                                                       
-              VectorTools::interpolate_boundary_values(NS_dof_handler, 
-                                                      1,                    // Inlet
-                                                      BoundaryValues<dim>(), // Functions::ZeroFunction<dim>(dim+1), 
-                                                      nonzero_NS_constraints, 
-                                                      NS_fe.component_mask(velocities));
+              // VectorTools::interpolate_boundary_values(NS_dof_handler, 
+              //                                         1,                    // Inlet
+              //                                         BoundaryValues<dim>(), // Functions::ZeroFunction<dim>(dim+1), 
+              //                                         nonzero_NS_constraints, 
+              //                                         NS_fe.component_mask(velocities));
                                                       
             
               VectorTools::interpolate_boundary_values(NS_dof_handler,
@@ -1431,7 +1431,7 @@ void CompleteProblem<dim>::setup_NS()
 
     //??Farlo ereditare anche a Vel_X e Vel_Y ??
    
-    owned_partitioning_u = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      
+    // owned_partitioning_u = NS_dof_handler.locally_owned_dofs().get_view(0, dof_u);      
     owned_partitioning_p = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
     
 
@@ -1446,7 +1446,7 @@ void CompleteProblem<dim>::setup_NS()
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
+void drift_diffusion<dim>::assemble_NS(bool use_nonzero_constraints,
                                        bool assemble_system)
 { 
   
@@ -1564,7 +1564,7 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
                    div_phi_u[i] * phi_p[j] -
                    phi_p[i] * div_phi_u[j] +
                    gamma * div_phi_u[j] * div_phi_u[i] +
-                   phi_u[i] * phi_u[j] / time_NS.get_delta_t() //+
+                   phi_u[i] * phi_u[j] / timestep_NS //+
 
                   // phi_u[i] * (current_velocity_gradients[q] * phi_u[j]) +
                   // phi_u[i] * (grad_phi_u[j] * current_velocity_values[q]) 
@@ -1578,9 +1578,9 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
                 }
               }
 
-              const double q0 = m_data.drift_diffusion.physical_parameters.q0;
+              const double q0 = m_data.electrical_parameters.q0;
 
-              const double rho = m_data.drift_diffusion.physical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3
+              const double rho = m_data.electrical_parameters.stratosphere ? 0.089 : 1.225; // kg m^-3
 
               //const double rho = 1.225; // kg m^-3  //Attenzione: buono solo se non nella stratosphere
               
@@ -1667,14 +1667,14 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 std::pair<unsigned int, double>
-CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step)
+drift_diffusion<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step)
 {
     if (assemble_system)
     {
       preconditioner.reset(new BlockSchurPreconditioner(timer,
                                                       gamma,
                                                       viscosity,
-                                                      time_NS.get_delta_t(),
+                                                      timestep_NS,
                                                       owned_partitioning,
                                                       NS_system_matrix,
                                                       NS_mass_matrix,
@@ -1715,7 +1715,7 @@ CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void CompleteProblem<dim>::solve_navier_stokes()
+void drift_diffusion<dim>::solve_navier_stokes()
 {
 	evaluate_electric_field();   //Serve ad assembly_NS, crea Field_X e Field_Y
 
@@ -1732,18 +1732,18 @@ void CompleteProblem<dim>::solve_navier_stokes()
 
   NS_solution_update = 0;
   // Only use nonzero constraints at the very first time step (Così i valori nei constraints non vengono modificati)
-  bool apply_nonzero_constraints = (time_NS.get_timestep() == 1);  //Capire se usare step_number o la classe Time
+  bool apply_nonzero_constraints = (time_NS == 1);  //Capire se usare step_number o la classe Time
 
   // We have to assemble the LHS for the initial two time steps:
   // once using nonzero_constraints, once using zero_constraints.
-  bool assemble_system = (time_NS.get_timestep() < 3);
+  bool assemble_system = (time_NS < 3);
 
   pcout << "   ASSEMBLE NAVIER STOKES SYSTEM ..."  << std::endl;
   assemble_NS(apply_nonzero_constraints, assemble_system);
 
 
   pcout << "   SOLVE NAVIER STOKES SYSTEM ..."  << std::endl;
-  auto state = solver_NS(apply_nonzero_constraints, assemble_system, time_NS.get_timestep());
+  auto state = solver_NS(apply_nonzero_constraints, assemble_system, time_NS);
 
 
   // Note we have to use a non-ghosted vector to do the addition.
@@ -1908,8 +1908,10 @@ while (step_number < max_steps && time_err > time_tol){
   ++step_number;
 
   // Faster time-stepping (adaptive time-stepping would be MUCH better!)
-  if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-3)
+  if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-3){
     timestep*= 10.;
+    timestep_NS*=10.;
+    }
 
   int it = 0;            // internal gummel iterator
   const double gummel_tol = 6.e-4;  // riferito al gummel algorithm
@@ -1962,7 +1964,7 @@ while (step_number < max_steps && time_err > time_tol){
 
 
   if (step_number % 40 == 1){ // NS solution update every 40 timesteps
-
+    time_NS += 1;
     pcout << "   START NAVIER STOKES PROBLEM ... "<< std::endl; // FINO A QUA FUNZIONA 
     solve_navier_stokes();
 
