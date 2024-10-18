@@ -8,6 +8,7 @@
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/timer.h>
 #include <deal.II/base/utilities.h>
+#include <deal.II/lac/solver_bicgstab.h>
 
 #include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/block_sparse_matrix.h>
