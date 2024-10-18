@@ -44,7 +44,7 @@
     }
   },
   "simulation_specification": {
-    "mesh_name":"concentric_cylinders_fine.msh",
+    "mesh_name":"concentric_cylinders.msh",
     "mesh_TAG":"CYL"
   
   }
