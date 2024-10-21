@@ -151,7 +151,12 @@ SparsityTools::distribute_sparsity_pattern(dsp_init,
 initial_matrix_poisson.clear();  //store the initial matrix to initialize a good potential guess in order to make newton converge
 initial_matrix_poisson.reinit(locally_owned_dofs, locally_owned_dofs, dsp,  mpi_communicator);
 
-initial_poisson_rhs.reinit(locally_owned_dofs, mpi_communicator);                       
+initial_poisson_rhs.reinit(locally_owned_dofs, mpi_communicator);     
+
+
+Vel_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+Vel_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
+pressure.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator); 
 
 }
 //----------------------------------------------------------------------------------------------------------------------------------------------
@@ -1434,10 +1439,7 @@ void drift_diffusion<dim>::setup_NS()
     owned_partitioning_p = NS_dof_handler.locally_owned_dofs().get_view(dof_u, dof_u + dof_p);
     
 
-    Vel_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);  //NB dof handler di DD !!! va così
-    Vel_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
-
-    pressure.reinit(owned_partitioning_p, mpi_communicator); // lui non da problemi in output, inizializzartlo come VelX e Y??
+    
   
   }
 
@@ -1948,49 +1950,49 @@ void drift_diffusion<dim>::solve_navier_stokes()
 
 	double vel_max = 0.;  //vel_max non serve da nessuna parte credo, capire se serve calcolarla
 
-	while (cell != endc && NS_cell != NS_endc) {
+	// while (cell != endc && NS_cell != NS_endc) {
 
-    if (cell->is_locally_owned() && NS_cell->is_locally_owned())
-    {
-        cell->get_dof_indices(local_dof_indices);       //Recupera gli indici globali dei gradi di libertà associati alla cella corrente
-        NS_cell->get_dof_indices(NS_local_dof_indices);
+  //   if (cell->is_locally_owned() && NS_cell->is_locally_owned())
+  //   {
+  //       cell->get_dof_indices(local_dof_indices);       //Recupera gli indici globali dei gradi di libertà associati alla cella corrente
+  //       NS_cell->get_dof_indices(NS_local_dof_indices);
 
-        for (unsigned int k = 0; k < dofs_per_cell; ++k) {
+  //       for (unsigned int k = 0; k < dofs_per_cell; ++k) {
 
-          const unsigned int global_dof_index = local_dof_indices[k]; 
+  //         const unsigned int global_dof_index = local_dof_indices[k]; 
           
-          // Verifica che l'indice globale sia posseduto localmente
-          if (locally_owned_dofs.is_element(global_dof_index)) {
+  //         // Verifica che l'indice globale sia posseduto localmente
+  //         if (locally_owned_dofs.is_element(global_dof_index)) {
 
-            const unsigned int local_index = locally_owned_dofs.index_within_set(global_dof_index);
+  //           const unsigned int local_index = locally_owned_dofs.index_within_set(global_dof_index);
 
-            const unsigned int global_index_NS_Vel_X = NS_local_dof_indices[k];
-            const unsigned int global_index_NS_Vel_Y = NS_local_dof_indices[9+k];
-            const unsigned int global_index_NS_pressure = NS_local_dof_indices[18+k]; 
+  //           const unsigned int global_index_NS_Vel_X = NS_local_dof_indices[k];
+  //           const unsigned int global_index_NS_Vel_Y = NS_local_dof_indices[9+k];
+  //           const unsigned int global_index_NS_pressure = NS_local_dof_indices[18+k]; 
 
-            if (owned_partitioning[0].is_element(global_index_NS_Vel_X) &&
-                owned_partitioning[0].is_element(global_index_NS_Vel_Y) &&
-                owned_partitioning[1].is_element(global_index_NS_pressure)) {
+  //           if (owned_partitioning[0].is_element(global_index_NS_Vel_X) &&
+  //               owned_partitioning[0].is_element(global_index_NS_Vel_Y) &&
+  //               owned_partitioning[1].is_element(global_index_NS_pressure)) {
                 
-              const unsigned int local_index_NS_Vel_X = owned_partitioning[0].index_within_set(global_index_NS_Vel_X);
-              const unsigned int local_index_NS_Vel_Y = owned_partitioning[0].index_within_set(global_index_NS_Vel_Y);
-              const unsigned int local_index_NS_pressure = owned_partitioning[1].index_within_set(global_index_NS_pressure);
+  //             const unsigned int local_index_NS_Vel_X = owned_partitioning[0].index_within_set(global_index_NS_Vel_X);
+  //             const unsigned int local_index_NS_Vel_Y = owned_partitioning[0].index_within_set(global_index_NS_Vel_Y);
+  //             const unsigned int local_index_NS_pressure = owned_partitioning[1].index_within_set(global_index_NS_pressure);
 
-              // Ora accedi ai valori
-              temp_X(local_index) = NS_solution.block(0)[local_index_NS_Vel_X];     // Velocità in x
-              temp_Y(local_index) = NS_solution.block(0)[local_index_NS_Vel_Y];     // Velocità in y
-              temp_pressure(local_index) = NS_solution.block(1)[local_index_NS_pressure]; // Pressione
+  //             // Ora accedi ai valori
+  //             temp_X(local_index) = NS_solution.block(0)[local_index_NS_Vel_X];     // Velocità in x
+  //             temp_Y(local_index) = NS_solution.block(0)[local_index_NS_Vel_Y];     // Velocità in y
+  //             temp_pressure(local_index) = NS_solution.block(1)[local_index_NS_pressure]; // Pressione
 
-              vel_max = std::max(vel_max, static_cast<double>(temp_X(local_index)));
-            } 
-          } 
-        }
-	  }
+  //             vel_max = std::max(vel_max, static_cast<double>(temp_X(local_index)));
+  //           } 
+  //         } 
+  //       }
+	//   }
 
-    ++cell;
-		++NS_cell;
+  //   ++cell;
+	// 	++NS_cell;
 
-  }
+  // }
 
 //   while (cell != endc && NS_cell != NS_endc)
 // {
@@ -2042,7 +2044,7 @@ void drift_diffusion<dim>::solve_navier_stokes()
 // }
 
 
-// Dichiarazione delle formule di quadratura per i problemi NS e ionico
+// // Dichiarazione delle formule di quadratura per i problemi NS e ionico
 // const QTrapezoid<dim> quadrature_formula_ion;        // Per il problema elettrico (ionico)
 
 // FEValues<dim> fe_values(NS_fe, volume_quad_formula, update_values | update_quadrature_points | update_gradients | update_JxW_values);
@@ -2094,18 +2096,83 @@ void drift_diffusion<dim>::solve_navier_stokes()
 //     }
 //   }
 
+// Dichiarazione delle formule di quadratura per i problemi NS e ionico
+const QTrapezoid<dim> quadrature_formula_ion;  // Per il problema elettrico (ionico)
+
+// FEValues per i problemi Navier-Stokes e ionico
+FEValues<dim> fe_values(NS_fe, volume_quad_formula, update_values | update_quadrature_points | update_gradients | update_JxW_values);
+FEValues<dim> fe_values_ion(fe, quadrature_formula_ion, update_values | update_gradients | update_quadrature_points | update_JxW_values);
+
+// Estrattori per velocità e pressione nel sistema di Navier-Stokes
+const FEValuesExtractors::Vector velocities(0);  // Estrai la velocità dalla posizione 0
+const FEValuesExtractors::Scalar press(dim);     // Estrai la pressione dalla posizione dim
+
+// Iterazione sulle celle attive di entrambi i problemi
+for (auto NS_cell = NS_dof_handler.begin_active(), ion_cell = dof_handler.begin_active();
+     NS_cell != NS_dof_handler.end() && ion_cell != dof_handler.end();
+     ++NS_cell, ++ion_cell)
+{
+    Assert(NS_cell->index() == ion_cell->index(), ExcMessage("Mismatch between NS and ion cells!"));
+
+    if (NS_cell->is_locally_owned() && ion_cell->is_locally_owned()) {
+
+        // Inizializzazione di FEValues per le celle correnti
+        fe_values.reinit(NS_cell);
+        fe_values_ion.reinit(ion_cell);
+
+        // Estrazione dei valori delle velocità e della pressione nei punti di quadratura
+        std::vector<Tensor<1, dim>> velocity_values(fe_values.n_quadrature_points);
+        std::vector<double> pressure_values(fe_values.n_quadrature_points);
+
+        fe_values[velocities].get_function_values(NS_solution, velocity_values);  // Velocità
+        fe_values[press].get_function_values(NS_solution, pressure_values);       // Pressione
+
+        // Estrazione dei DoF locali per la cella ionica (problema elettrico)
+        std::vector<types::global_dof_index> ion_local_dof_indices(fe_values_ion.dofs_per_cell);
+        ion_cell->get_dof_indices(ion_local_dof_indices);
+
+        // Variabili per calcolare le somme di velocità e pressione
+        double vel_x_sum = 0.0, vel_y_sum = 0.0, pressure_sum = 0.0;
+
+        // Ciclo sui punti di quadratura di Navier-Stokes per sommare i contributi
+        for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q) {
+            const Tensor<1, dim> &velocity = velocity_values[q];
+            const double &pressure = pressure_values[q];
+
+            // Somma i valori di velocità e pressione per tutti i DoF della cella Navier-Stokes
+            for (unsigned int i = 0; i < fe_values.dofs_per_cell; ++i) {
+                vel_x_sum += velocity[0] * fe_values.shape_value(i, q) * fe_values.JxW(q);  // Velocità X
+                vel_y_sum += velocity[1] * fe_values.shape_value(i, q) * fe_values.JxW(q);  // Velocità Y
+                pressure_sum += pressure * fe_values.shape_value(i, q) * fe_values.JxW(q);  // Pressione
+            }
+        }
+
+        // Media dei valori di velocità e pressione su tutti i DoF della cella Navier-Stokes
+        double vel_x_avg = vel_x_sum / fe_values.dofs_per_cell;
+        double vel_y_avg = vel_y_sum / fe_values.dofs_per_cell;
+        double pressure_avg = pressure_sum / fe_values.dofs_per_cell;
+
+        // Assegnazione delle medie ai DoF del problema elettrico
+        for (unsigned int i = 0; i < ion_local_dof_indices.size(); ++i) {
+            // Mappa la media nei DoF del problema elettrico (4 DoF per cella)
+            temp_X(ion_local_dof_indices[i]) += vel_x_avg * fe_values_ion.shape_value(i, 0) * fe_values_ion.JxW(0);
+            temp_Y(ion_local_dof_indices[i]) += vel_y_avg * fe_values_ion.shape_value(i, 0) * fe_values_ion.JxW(0);
+            temp_pressure(ion_local_dof_indices[i]) += pressure_avg * fe_values_ion.shape_value(i, 0) * fe_values_ion.JxW(0);
+        }
+    }
+}
 
 
-//   // Compressione dei vettori di velocità e pressione dopo l'assegnazione
-//   Vel_X.compress(VectorOperation::add);
-//   Vel_Y.compress(VectorOperation::add);
-//   pressure.compress(VectorOperation::add);
+
+
+  // Compressione dei vettori di velocità e pressione dopo l'assegnazione
+  temp_X.compress(VectorOperation::add);
+  temp_Y.compress(VectorOperation::add);
+  temp_pressure.compress(VectorOperation::add);
   
-//   Vel_X = temp_X;
-//   Vel_Y = temp_Y;
-//   pressure = temp_pressure;
-
-//   pcout << "   Fine solve_navier_stokes " << std::endl;
+  Vel_X = temp_X;
+  Vel_Y = temp_Y;
+  pressure = temp_pressure;
 
 	// cout << "Estimating thrust..." << endl; estimate_thrust();
 }
@@ -2276,29 +2343,29 @@ if (!std::filesystem::exists(output_directory))
 
 DataOut<dim> data_out;
 
-data_out.attach_dof_handler(dof_handler);
+// data_out.attach_dof_handler(dof_handler);
 
-data_out.add_data_vector(potential, "potential");
-data_out.add_data_vector(pressure, "pressure");
-data_out.add_data_vector(Vel_X, "Vel_X");
-data_out.add_data_vector(Vel_Y, "Vel_Y");
-data_out.add_data_vector(ion_density, "Ion_Density");
-data_out.add_data_vector(Field_X, "Field_X");
-data_out.add_data_vector(Field_Y, "Field_Y");
+// data_out.add_data_vector(potential, "potential");
+// data_out.add_data_vector(pressure, "pressure");
+// data_out.add_data_vector(Vel_X, "Vel_X");
+// data_out.add_data_vector(Vel_Y, "Vel_Y");
+// data_out.add_data_vector(ion_density, "Ion_Density");
+// data_out.add_data_vector(Field_X, "Field_X");
+// data_out.add_data_vector(Field_Y, "Field_Y");
 
 
-// data_out.attach_dof_handler(NS_dof_handler);
+data_out.attach_dof_handler(NS_dof_handler);
 
-// std::vector<std::string> solution_names(dim, "velocity");
-// solution_names.push_back("pressure");
+std::vector<std::string> solution_names(dim, "velocity");
+solution_names.push_back("pressure");
 
-// std::vector<DataComponentInterpretation::DataComponentInterpretation> data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
-// data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);                                              
-// // vector to be output must be ghosted
-// data_out.add_data_vector(NS_solution,
-//                         solution_names,
-//                         DataOut<dim>::type_dof_data,
-//                         data_component_interpretation);
+std::vector<DataComponentInterpretation::DataComponentInterpretation> data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
+data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);                                              
+// vector to be output must be ghosted
+data_out.add_data_vector(NS_solution,
+                        solution_names,
+                        DataOut<dim>::type_dof_data,
+                        data_component_interpretation);
 
 
 Vector<float> subdomain(triangulation.n_active_cells());
