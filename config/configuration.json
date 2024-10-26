@@ -1,7 +1,7 @@
 {
   "fluid_parameters": {
     "viscosity": 0.01,
-    "gamma":1.0,
+    "gamma":10.0,
     "p_over_rho":0.0
   },
   "electrical_parameters": {
@@ -44,8 +44,8 @@
     }
   },
   "simulation_specification": {
-    "mesh_name":"concentric_cylinders.msh",
-    "mesh_TAG":"CYL"
+    "mesh_name":"coarse_WW.msh",
+    "mesh_TAG":"WW"
   
   }
 }

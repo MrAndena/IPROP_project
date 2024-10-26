@@ -41,6 +41,7 @@
 #include "data_struct.hpp"
 #include "BlockSchurPreconditioner.hpp"
 #include "CollectorGeometryNS.hpp"
+#include "BoundaryValues.hpp"
 
 
 
@@ -109,6 +110,8 @@ private:
     AffineConstraints<double> ion_constraints;
     AffineConstraints<double> zero_constraints_poisson;
     AffineConstraints<double> constraints_poisson;
+
+    AffineConstraints<double> constraints_poisson_update;
     
     // Poisson Matrices
     PETScWrappers::MPI::SparseMatrix laplace_matrix_poisson;
@@ -202,7 +205,8 @@ double side_length (const Point<2> a, const Point<2> b);
 double triangle_denom(const Point<2> a, const Point<2> b, const Point<2> c);
 Tensor<1,2> face_normal(const Point<2> a, const Point<2> b);
 FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31, const double D);
-Tensor<1,2> get_emitter_normal(const Point<2> a);
+// Tensor<1,2> get_emitter_normal(const Point<2> a);
+Tensor<1,2> get_emitter_normal(const Point<2> &a, const Point<2> &emitter_center);
 
 
 

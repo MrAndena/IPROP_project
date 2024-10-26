@@ -16,8 +16,8 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , volume_quad_formula(degree + 2) //non cerano nell'originale
   , face_quad_formula(degree + 2)   //non cerano nell'originale
   , NS_mapping() // serve ? nel nostro NS non cè
-  , timestep(1e-3) // timestep for the DD algorithm
-  , timestep_NS(40*1e-3) // come in INSIMEX     //DA GESTIRE
+  , timestep(1e-5) // timestep for the DD algorithm
+  , timestep_NS(40*1e-5) // come in INSIMEX     //DA GESTIRE
   , timer(mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
 {}
 
@@ -41,18 +41,18 @@ const double Ep = E_ON*delta*eps*(1+0.308/std::sqrt(Re*1.e+2*delta));
 const double Vi = Ve - Ep*Re*log(Ep/E_ON); // [V] voltage on ionization region boundary
 
 
-  dof_handler.distribute_dofs(fe);
+dof_handler.distribute_dofs(fe);
 
-  // INDEX SETS INITIALIZATION
-  locally_owned_dofs = dof_handler.locally_owned_dofs();                           //local dofs
-  //estrae gli indici globali dei gradi di libertà (DoFs) che sono posseduti localmente dal processore
-  locally_relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_handler);    //local dofs + ghost dofs
+// INDEX SETS INITIALIZATION
+locally_owned_dofs = dof_handler.locally_owned_dofs();                           //local dofs
+//estrae gli indici globali dei gradi di libertà (DoFs) che sono posseduti localmente dal processore
+locally_relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_handler);    //local dofs + ghost dofs
 
 
-  // PETSC VECTORS DECLARATIONS 
-  potential.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);   //ghosted
-  poisson_newton_update.reinit(locally_owned_dofs, mpi_communicator);              //non-ghosted
-  poisson_rhs.reinit(locally_owned_dofs, mpi_communicator);                        //non-ghosted
+// PETSC VECTORS DECLARATIONS 
+potential.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);   //ghosted
+poisson_newton_update.reinit(locally_owned_dofs, mpi_communicator);              //non-ghosted
+poisson_rhs.reinit(locally_owned_dofs, mpi_communicator);                        //non-ghosted
 
 Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     //ghosted Electric field X
 Field_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);     //ghosted Electric field Y
@@ -84,6 +84,7 @@ if (iter != stringToCase.end()) {
         case 3:{
 
             VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(Ve), constraints_poisson); //emitter
+            // VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ZeroFunction<dim>(), constraints_poisson);
             VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson); // collector
 
             break;
@@ -157,6 +158,17 @@ initial_poisson_rhs.reinit(locally_owned_dofs, mpi_communicator);
 Vel_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
 Vel_Y.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
 pressure.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator); 
+
+
+constraints_poisson_update.clear();
+constraints_poisson_update.reinit(locally_relevant_dofs);
+                
+VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ConstantFunction<dim>(50), constraints_poisson); //emitter
+// VectorTools::interpolate_boundary_values(dof_handler, 3, Functions::ZeroFunction<dim>(), constraints_poisson);
+VectorTools::interpolate_boundary_values(dof_handler, 4, Functions::ZeroFunction<dim>(), constraints_poisson); // collector
+
+constraints_poisson_update.close();
+
 
 }
 //----------------------------------------------------------------------------------------------------------------------------------------------
@@ -345,11 +357,22 @@ const double N_min = m_data.electrical_parameters.N_min;
 Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object(dof_handler, potential, mapping);
 
 
+std::unordered_map<std::string, int> stringToCase{
+  {"NACA", 1},
+  {"WW", 2},
+  {"CYL", 3}
+  };
+
+const std::string input = m_data.simulation_specification.mesh_TAG;
+auto iter = stringToCase.find(input);
+
+
 auto boundary_evaluator = [&] (const Point<dim> &p) //lambda function
 {
 
+  Point<dim> center(0.0,0.0);
   Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
-  Tensor<1,dim> normal = get_emitter_normal(p);
+  Tensor<1,dim> normal = get_emitter_normal(p,center);
 
   const double En = grad_U*normal;
 
@@ -364,14 +387,44 @@ auto boundary_evaluator = [&] (const Point<dim> &p) //lambda function
 };
 
 
-std::unordered_map<std::string, int> stringToCase{
-  {"NACA", 1},
-  {"WW", 2},
-  {"CYL", 3}
-  };
+auto boundary_evaluator_emitter = [&] (const Point<dim> &p) //lambda function
+{
 
-const std::string input = m_data.simulation_specification.mesh_TAG;
-auto iter = stringToCase.find(input);
+  Point<dim> center(-0.0253,0.0);
+  Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
+  Tensor<1,dim> normal = get_emitter_normal(p,center);
+
+  const double En = grad_U*normal;
+
+  const double EXP = std::exp((-En-E_ON)/E_ref); 
+
+  const double value =  N_ref * EXP; 
+
+  const double n = std::max(N_min, value);
+
+  return n;
+};
+
+
+auto boundary_evaluator_collector = [&] (const Point<dim> &p) //lambda function
+{
+  
+  Point<dim> center(0.001,0.0);
+  Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
+  Tensor<1,dim> normal = get_emitter_normal(p,center);
+
+  const double En = grad_U*normal;
+
+  const double EXP = std::exp((-En-E_ON)/E_ref); 
+
+  const double value =  N_ref * EXP; 
+
+  const double n = std::max(N_min, value);
+
+  return n;
+};
+
+
 
 const double N_0 = m_data.electrical_parameters.stratosphere ? 2.2e-3 : 0.5e-3; // [m^-3] ambient ion density 
 
@@ -397,6 +450,7 @@ ion_constraints.clear();
 ion_constraints.reinit(locally_relevant_dofs);
 
 
+
 if (iter != stringToCase.end()) {
     switch (iter->second) {
 
@@ -410,8 +464,8 @@ if (iter != stringToCase.end()) {
         case 2:{
 
             // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), ion_constraints);   // Up and down
-            VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);    // Emitter
-            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);  // Collector
+            VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator_emitter), ion_constraints);    // Emitter
+            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator_collector), ion_constraints);  // Collector
             VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ConstantFunction<dim>(N_0), ion_constraints);   // Inlet
             // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), ion_constraints);   // Outlet
 
@@ -448,7 +502,9 @@ SparsityTools::distribute_sparsity_pattern(ion_dsp,
 // DENSITY VECTORS AND MATRICES
 eta.reinit(locally_owned_dofs, mpi_communicator);                                // non-ghosted
 ion_density.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator); // ghosted
+ion_density = N_0; // Imposta tutti i valori iniziali di ion_density a N_0
 old_ion_density.reinit(locally_owned_dofs, mpi_communicator);                    // non-ghosted 
+ion_density = N_0;
 ion_rhs.reinit(locally_owned_dofs, mpi_communicator);                            // non-ghosted
 
 
@@ -499,7 +555,7 @@ Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_
 
 auto boundary_evaluator = [&] (const Point<dim> &p) 
 {
-
+  
 const double ion_value = solution_as_function_object_1.value(p);
 const double old_ion_value = solution_as_function_object_2.value(p);
 
@@ -530,6 +586,7 @@ VectorTools::interpolate_boundary_values(dof_handler,
                                          ion_constraints); //emitter
 ion_constraints.close();
 */
+
 
 ion_constraints.clear();
 
@@ -716,6 +773,10 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
     const std::string input = m_data.simulation_specification.mesh_TAG;
     auto iter = stringToCase.find(input);
 
+    // pcout << "L2 norm of the system_matrix_poisson: " << system_matrix_poisson.frobenius_norm() << std::endl;
+    // pcout << "L2 norm of the poisson_newton_update: " << poisson_newton_update.l2_norm() << std::endl;
+    // pcout << "L2 norm of the poisson_rhs: " << poisson_rhs.l2_norm() << std::endl;
+
 
     if (iter != stringToCase.end()) {
     switch (iter->second) {
@@ -723,7 +784,14 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
         case 3:{
             std::map<types::global_dof_index, double> emitter_boundary_values, collector_boundary_values;
 
+            // VectorTools::interpolate_boundary_values(mapping, dof_handler,3, Functions::ZeroFunction<dim>(), emitter_boundary_values);
+            // MatrixTools::apply_boundary_values(emitter_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
+            // VectorTools::interpolate_boundary_values(mapping, dof_handler,4, Functions::ZeroFunction<dim>(), collector_boundary_values);
+            // MatrixTools::apply_boundary_values(collector_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
+
             VectorTools::interpolate_boundary_values(mapping, dof_handler,3, Functions::ZeroFunction<dim>(), emitter_boundary_values);
+            // VectorTools::interpolate_boundary_values(mapping, dof_handler,3, Functions::ConstantFunction<dim>(5e-15), emitter_boundary_values); //BC dell'update sull'emitter è 50
             MatrixTools::apply_boundary_values(emitter_boundary_values, system_matrix_poisson, poisson_newton_update, poisson_rhs);
 
             VectorTools::interpolate_boundary_values(mapping, dof_handler,4, Functions::ZeroFunction<dim>(), collector_boundary_values);
@@ -767,6 +835,11 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
       }
     }
 
+    // pcout << "L2 norm of the system_matrix_poisson: " << system_matrix_poisson.frobenius_norm() << std::endl;
+    // pcout << "L2 norm of the poisson_newton_update: " << poisson_newton_update.l2_norm() << std::endl;
+    // pcout << "L2 norm of the poisson_rhs: " << poisson_rhs.l2_norm() << std::endl;
+    // pcout << "-------------------------------------------------------- " << std::endl;
+
     //Solve poisson system problem
     const double coeff = 1e-3;
     SolverControl sc_p(dof_handler.n_dofs(), /*1e-10*/coeff *poisson_rhs.l2_norm());     
@@ -790,7 +863,7 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
     poisson_newton_update.compress(VectorOperation::insert);
     eta.compress(VectorOperation::insert);
     
-    ion_constraints.distribute(eta);  
+    ion_constraints.distribute(eta);   
     eta.compress(VectorOperation::insert); 
 
     //Update current solution
@@ -801,6 +874,8 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
     temp.add(1.0, poisson_newton_update);
 
     potential = temp;
+
+    // pcout << "potential: " << potential.l2_norm() << std::endl;
 
     return residual;
 
@@ -818,6 +893,19 @@ void drift_diffusion<dim>::solve_nonlinear_poisson(const unsigned int max_iter_n
   unsigned int counter = 0; // it keeps track of newton iteration
 
   double increment_norm = std::numeric_limits<double>::max(); // the increment norm is + inf 
+
+  // PETScWrappers::MPI::Vector temp;  
+  // temp.reinit(locally_owned_dofs, mpi_communicator);
+
+  // constraints_poisson_update.distribute(temp);
+  // temp.compress(VectorOperation::insert);
+
+  // PETScWrappers::MPI::Vector temp_p;  
+  // temp_p.reinit(locally_owned_dofs, mpi_communicator);
+
+  // temp_p = potential;
+  // temp_p += temp;
+  // potential = temp_p;
 
   while(counter < max_iter_newton && increment_norm > toll_newton){
 
@@ -1220,7 +1308,7 @@ void drift_diffusion<dim>::setup_NS()
     //SET UP DOFS
     NS_dof_handler.distribute_dofs(NS_fe);
 
-	  DoFRenumbering::Cuthill_McKee(NS_dof_handler);  //Renumber the degrees of freedom according to the Cuthill-McKee method.
+	  // DoFRenumbering::Cuthill_McKee(NS_dof_handler);  //Renumber the degrees of freedom according to the Cuthill-McKee method.
 
     std::vector<unsigned int> block_component(dim + 1, 0);   //Musk for the reording 
     block_component[dim] = 1;
@@ -1296,11 +1384,11 @@ void drift_diffusion<dim>::setup_NS()
                                                       nonzero_NS_constraints,
                                                       NS_fe.component_mask(velocities));
                                                       
-              // VectorTools::interpolate_boundary_values(NS_dof_handler, 
-              //                                         1,                    // Inlet
-              //                                         BoundaryValues<dim>(), // Functions::ZeroFunction<dim>(dim+1), 
-              //                                         nonzero_NS_constraints, 
-              //                                         NS_fe.component_mask(velocities));
+              VectorTools::interpolate_boundary_values(NS_dof_handler, 
+                                                      1,                    // Inlet
+                                                      BoundaryValues<dim>(10.0), // Functions::ZeroFunction<dim>(dim+1), 
+                                                      nonzero_NS_constraints, 
+                                                      NS_fe.component_mask(velocities));
                                                       
             
               VectorTools::interpolate_boundary_values(NS_dof_handler,
@@ -1511,169 +1599,10 @@ void drift_diffusion<dim>::assemble_NS(bool use_nonzero_constraints,
   // end electrical variables
   
   
-  // NS SYSTEMS
-  // for (auto cell = NS_dof_handler.begin_active(); cell != NS_dof_handler.end(); ++cell)     //Iterator from the first active cell to the last one of NS
-  // {   
-      
-  //     if (cell->is_locally_owned())
-  //     {   
-
-  //         fe_values.reinit(cell);    //Reinitialize the gradients, Jacobi determinants, etc for the given cell of type "iterator into a Triangulation object", and the given finite element.
-
-  //         if (assemble_system)
-  //         {
-  //             local_matrix = 0;
-  //             local_mass_matrix = 0;
-  //         } 
-
-  //         local_rhs = 0;
-          
-  //         fe_values[velocities].get_function_values(NS_solution,
-  //                                                   current_velocity_values);     //in current_velocity_values i stored values of NS_solution in quadrature points
-
-  //         fe_values[velocities].get_function_gradients(NS_solution, 
-  //                                                      current_velocity_gradients);
-
-  //         fe_values[velocities].get_function_divergences(NS_solution, 
-  //                                                        current_velocity_divergences);
-
-  //         fe_values[pressure].get_function_values(NS_solution,
-  //                                                 current_pressure_values);
-
-  //         if (ion_cell->is_locally_owned())
-  //         {
-  //             if (ion_cell != ion_endc){
-  //               ion_cell->get_dof_indices(ion_local_dof_indices);
-  //             }  else{
-  //               pcout << "Warning! Reached end of ion cells at NS cell " << cell->index() << std::endl;
-  //             }
-  //         }
-
-  //         // Assemble the system matrix and mass matrix simultaneouly.
-  //         // The mass matrix only uses the $(0, 0)$ and $(1, 1)$ blocks.
-          
-  //         for (unsigned int q = 0; q < n_q_points; ++q)
-  //         { 
-            
-  //           for (unsigned int k = 0; k < dofs_per_cell; ++k)
-  //           {
-  //             div_phi_u[k] = fe_values[velocities].divergence(k, q);           //Returns the value of the k-th shape function in q quadrature point
-  //             grad_phi_u[k] = fe_values[velocities].gradient(k, q);
-  //             phi_u[k] = fe_values[velocities].value(k, q);
-  //             phi_p[k] = fe_values[pressure].value(k, q); 
-  //           }
-        
-  //           for (unsigned int i = 0; i < dofs_per_cell; ++i)
-  //           { 
-  //                 if (assemble_system)
-  //                 {
-  //                   for (unsigned int j = 0; j < dofs_per_cell; ++j)
-  //                   { 
-                      
-  //                     local_matrix(i, j) +=
-  //                     (viscosity *
-  //                     scalar_product(grad_phi_u[j], grad_phi_u[i]) -
-  //                     div_phi_u[i] * phi_p[j] -
-  //                     phi_p[i] * div_phi_u[j] +
-  //                     gamma * div_phi_u[j] * div_phi_u[i] +
-  //                     phi_u[i] * phi_u[j] / timestep_NS //+
-
-  //                     // phi_u[i] * (current_velocity_gradients[q] * phi_u[j]) +
-  //                     // phi_u[i] * (grad_phi_u[j] * current_velocity_values[q]) 
-  //                     ) *
-  //                     fe_values.JxW(q);
-                
-  //                     local_mass_matrix(i, j) +=
-  //                     (phi_u[i] * phi_u[j] + phi_p[i] * phi_p[j]) *
-  //                     fe_values.JxW(q);
-                      
-  //                   }
-  //                 }
-              
-  //             /*
-  //             PETScWrappers::MPI::Vector temp_X(locally_owned_dofs, mpi_communicator);
-  //             PETScWrappers::MPI::Vector temp_Y(locally_owned_dofs, mpi_communicator);
-  //             PETScWrappers::MPI::Vector temp_ion(locally_owned_dofs, mpi_communicator);
-
-  //             temp_X = Field_X;
-  //             temp_Y = Field_Y;
-  //             temp_ion = ion_density;
-  //              */
-
-  //                 // Calcolo del campo elettrico e delle densità ioniche per il DOF corrente
-  //                 if (ion_cell->is_locally_owned() && ion_cell != ion_endc && i < ion_dofs_per_cell) {
-
-  //                   double E_x = Field_X(ion_local_dof_indices[i]);       // Prendi il campo elettrico per questo DOF
-  //                   double E_y = Field_Y(ion_local_dof_indices[i]);       // Prendi il campo elettrico per questo DOF
-  //                   double ions = ion_density(ion_local_dof_indices[i]);  // Prendi la densità ionica per questo DOF
-
-  //                   f[0] = q0 * E_x / rho * ions;  // Forza nella direzione X
-  //                   f[1] = q0 * E_y / rho * ions;  // Forza nella direzione Y
-
-  //                 }
-              
-              
-  //                 local_rhs(i) -=
-  //                 (viscosity * scalar_product(current_velocity_gradients[q], grad_phi_u[i]) -
-  //                 current_velocity_divergences[q] * phi_p[i] -
-  //                 current_pressure_values[q] * div_phi_u[i] +
-  //                 gamma * current_velocity_divergences[q] * div_phi_u[i] +
-  //                 current_velocity_gradients[q] * current_velocity_values[q] * phi_u[i] -
-  //                 scalar_product(phi_u[i], f))*     // ADDED
-  //                 fe_values.JxW(q);
-              
-  //           }
-  //         }
-
-
-  //         cell->get_dof_indices(local_dof_indices);
-        
-  //         const AffineConstraints<double> &constraints_used = use_nonzero_constraints ? nonzero_NS_constraints : zero_NS_constraints;
-          
-  //         //if (cell->is_locally_owned())
-  //         //{
-  //         if (ion_cell != ion_endc){
-  //       	   ion_cell++;
-  //         }
-  //         //}
-
-  //         if (assemble_system)
-  //         {   
-          
-  //             constraints_used.distribute_local_to_global(local_matrix,             //In practice this function implements a scatter operation
-  //                                                         local_rhs,
-  //                                                         local_dof_indices,        //Contains the corresponding global indexes
-  //                                                         NS_system_matrix,
-  //                                                         NS_system_rhs);
-
-  //             constraints_used.distribute_local_to_global(local_mass_matrix, 
-  //                                                         local_dof_indices, NS_mass_matrix);
-
-  //                                                        // constraints_used.distribute_local_to_global(
-  //             //local_rhs, local_dof_indices, NS_system_rhs); non andrebbe messo?
-  //         }
-  //         else
-  //         {
-  //             constraints_used.distribute_local_to_global(
-  //             local_rhs, local_dof_indices, NS_system_rhs);
-
-          
-  //         }
-  //     }
-  // }
-   
-  // if (assemble_system)
-  // {
-  //     NS_system_matrix.compress(VectorOperation::add);
-  //     NS_mass_matrix.compress(VectorOperation::add);
-  // }
-
-  // NS_system_rhs.compress(VectorOperation::add);
-  
-  
+  // NS SYSTEMS  
   // VERSIONE JACK DELLA COSTRUZIONE DEL SISTEMA NS
 
-  const QTrapezoid<dim> quadrature_formula_ion;
+  const QGauss<dim> quadrature_formula_ion(degree + 2);  // Ora uguale a volume_quad_formula
 
   // Prepara un oggetto FEValues per il problema degli ioni
   FEValues<dim> fe_values_ion(fe, 
@@ -1819,8 +1748,6 @@ void drift_diffusion<dim>::assemble_NS(bool use_nonzero_constraints,
   NS_system_rhs.compress(VectorOperation::add);
   //FINE VERSIONE JACK 
   
-  
-
 }
 
 
@@ -1832,28 +1759,24 @@ drift_diffusion<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
     if (assemble_system)
     {
       preconditioner.reset(new BlockSchurPreconditioner(timer,
-                                                      gamma,
-                                                      viscosity,
-                                                      timestep_NS,
-                                                      owned_partitioning,
-                                                      NS_system_matrix,
-                                                      NS_mass_matrix,
-                                                      pressure_mass_matrix));
+                                                        gamma,
+                                                        viscosity,
+                                                        timestep_NS,
+                                                        owned_partitioning,
+                                                        NS_system_matrix,
+                                                        NS_mass_matrix,
+                                                        pressure_mass_matrix));
     }
     
     double coeff = 0.0 ;   // to avoid to have a tolerance too small
-    if (time_step < 4) {
-        coeff = 1e-5;
-    } else if (time_step >= 4 && time_step < 10) {
-        coeff = 1e-3;
-    } else {
+    if (time_step < 2) {
         coeff = 1e-2;
+    } else {
+        coeff = 1e-4;
     }
 
-    coeff = 1e-3;
-    
     //Used by iterative methods to determine whether the iteration should be continued
-    SolverControl solver_control(NS_system_matrix.m(), coeff * NS_system_rhs.l2_norm(), true);
+    SolverControl solver_control(10*NS_system_matrix.m(), coeff * NS_system_rhs.l2_norm(), true);
 
     SolverBicgstab<PETScWrappers::MPI::BlockVector> bicg(solver_control);
 
@@ -1872,9 +1795,6 @@ drift_diffusion<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
 
     return {solver_control.last_step(), solver_control.last_value()};
 }
-
-
-
 
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1899,7 +1819,8 @@ void drift_diffusion<dim>::solve_navier_stokes()
 
   // We have to assemble the LHS for the initial two time steps:
   // once using nonzero_constraints, once using zero_constraints.
-  bool assemble_system = (time_NS < 3);
+  // bool assemble_system = (time_NS < 3);
+  bool assemble_system = true;
 
   pcout << "   ASSEMBLE NAVIER STOKES SYSTEM ..." ;
   assemble_NS(apply_nonzero_constraints, assemble_system);
@@ -1921,13 +1842,13 @@ void drift_diffusion<dim>::solve_navier_stokes()
       << state.first << "   GMRES_RES = " << state.second << std::endl;
 
   pcout << "   L2 norm of the present solution: " << NS_solution.l2_norm() << std::endl;
+  pcout << "   Linf norm of the present solution: " << NS_solution.linfty_norm() << std::endl;
 
   //Questa parte con Vel_X e Y capire se effettivamnete crearli, per pressure possiamo accedervi in modo più intelligente essendo il 
   //secondo blocco come avevamo fatto anche noi in passato. Il problema è che vengono usati Vel_X e Y in DD. Sicurametne c'è modo più intelligente per accedervi
 
 	pcout << "   Recovering velocity and pressure values for output... " << std::endl;
 
-  //????
   PETScWrappers::MPI::Vector temp_X;  //NB dof handler di DD !!! va così, come al primo giro
   PETScWrappers::MPI::Vector temp_Y;
   PETScWrappers::MPI::Vector temp_pressure;
@@ -1937,10 +1858,12 @@ void drift_diffusion<dim>::solve_navier_stokes()
   temp_pressure.reinit(owned_partitioning[1], mpi_communicator); // non-ghosted pressure in order to look elements
 
 	const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
-	std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+	std::vector<types::global_dof_index> ion_local_dof_indices(dofs_per_cell);
 
 	const unsigned int dofs_per_NS_cell = NS_fe.n_dofs_per_cell();
 	std::vector<types::global_dof_index> NS_local_dof_indices(dofs_per_NS_cell);
+
+  pcout << "   NS_local_dof_indices size: " << NS_local_dof_indices.size() << std::endl;
 
 	auto cell = dof_handler.begin_active();    //Numero dof tra DD (ordine 1) e NS (ordine velocità e pressione diversi) sono diversi
 	auto NS_cell = NS_dof_handler.begin_active();
@@ -1950,226 +1873,71 @@ void drift_diffusion<dim>::solve_navier_stokes()
 
 	double vel_max = 0.;  //vel_max non serve da nessuna parte credo, capire se serve calcolarla
 
-	// while (cell != endc && NS_cell != NS_endc) {
 
-  //   if (cell->is_locally_owned() && NS_cell->is_locally_owned())
-  //   {
-  //       cell->get_dof_indices(local_dof_indices);       //Recupera gli indici globali dei gradi di libertà associati alla cella corrente
-  //       NS_cell->get_dof_indices(NS_local_dof_indices);
+  // Inizializza i valori min e max per DoF X, Y e P
+  unsigned int min_dof_x = std::numeric_limits<unsigned int>::max();
+  unsigned int max_dof_x = 0;
+  unsigned int min_dof_y = std::numeric_limits<unsigned int>::max();
+  unsigned int max_dof_y = 0;
+  unsigned int min_dof_p = std::numeric_limits<unsigned int>::max();
+  unsigned int max_dof_p = 0;
 
-  //       for (unsigned int k = 0; k < dofs_per_cell; ++k) {
+  std::vector<int> index_x = {0, 3, 6, 9};
 
-  //         const unsigned int global_dof_index = local_dof_indices[k]; 
-          
-  //         // Verifica che l'indice globale sia posseduto localmente
-  //         if (locally_owned_dofs.is_element(global_dof_index)) {
+  std::vector<unsigned int> block_component(dim + 1, 0);   //Musk for the reording 
+  block_component[dim] = 1;
+  DoFRenumbering::component_wise(NS_dof_handler, block_component);
+  dofs_per_block = DoFTools::count_dofs_per_fe_block(NS_dof_handler, block_component);
+  unsigned int dof_u = dofs_per_block[0];
 
-  //           const unsigned int local_index = locally_owned_dofs.index_within_set(global_dof_index);
+  // Aggiungi informazioni di debug dettagliate per verificare i DoF locali
+  for (auto NS_cell = NS_dof_handler.begin_active(), ion_cell = dof_handler.begin_active();
+      NS_cell != NS_dof_handler.end() && ion_cell != dof_handler.end();
+      ++NS_cell, ++ion_cell)
+  {
+      Assert(NS_cell->index() == ion_cell->index(), ExcMessage("Mismatch between NS and ion cells!"));
 
-  //           const unsigned int global_index_NS_Vel_X = NS_local_dof_indices[k];
-  //           const unsigned int global_index_NS_Vel_Y = NS_local_dof_indices[9+k];
-  //           const unsigned int global_index_NS_pressure = NS_local_dof_indices[18+k]; 
+      if (NS_cell->is_locally_owned() && ion_cell->is_locally_owned()) {
+          // Ottieni gli indici dei DoF locali per la cella NS e ionica
+          NS_cell->get_dof_indices(NS_local_dof_indices);
+          ion_cell->get_dof_indices(ion_local_dof_indices);
 
-  //           if (owned_partitioning[0].is_element(global_index_NS_Vel_X) &&
-  //               owned_partitioning[0].is_element(global_index_NS_Vel_Y) &&
-  //               owned_partitioning[1].is_element(global_index_NS_pressure)) {
-                
-  //             const unsigned int local_index_NS_Vel_X = owned_partitioning[0].index_within_set(global_index_NS_Vel_X);
-  //             const unsigned int local_index_NS_Vel_Y = owned_partitioning[0].index_within_set(global_index_NS_Vel_Y);
-  //             const unsigned int local_index_NS_pressure = owned_partitioning[1].index_within_set(global_index_NS_pressure);
+          // Stampa di debug per gli indici DoF
+          // std::cout << "NS Local DoF indices: ";
+          // for (const auto& dof : NS_local_dof_indices) {
+          //     std::cout << dof << " ";
+          // }
+          // std::cout<< "\n" << std::endl;
 
-  //             // Ora accedi ai valori
-  //             temp_X(local_index) = NS_solution.block(0)[local_index_NS_Vel_X];     // Velocità in x
-  //             temp_Y(local_index) = NS_solution.block(0)[local_index_NS_Vel_Y];     // Velocità in y
-  //             temp_pressure(local_index) = NS_solution.block(1)[local_index_NS_pressure]; // Pressione
+          // Verifica dimensione blocco e controlla indici
+          for (unsigned int i = 0; i < 4; ++i) {
+              const unsigned int dof_x = NS_local_dof_indices[index_x[i]];        // Indice della velocità X
+              const unsigned int dof_y = NS_local_dof_indices[index_x[i] + 1];    // Indice della velocità Y
+              const unsigned int dof_p = NS_local_dof_indices[3 * i + 2];        // Indice della pressione (ordine 1)
 
-  //             vel_max = std::max(vel_max, static_cast<double>(temp_X(local_index)));
-  //           } 
-  //         } 
-  //       }
-	//   }
+              // std::cerr << " DoF X: " << dof_x << ", DoF Y: " << dof_y << ", DoF P: " << dof_p << std::endl;
 
-  //   ++cell;
-	// 	++NS_cell;
+              // Verifica indici validi prima dell'accesso
+              if (dof_x < NS_solution.block(0).size() && dof_y < NS_solution.block(0).size() && dof_p < NS_solution.block(1).size() + dof_u) {
+                  // Accesso ai valori se gli indici sono validi
+                  temp_X(ion_local_dof_indices[i]) = NS_solution.block(0)[dof_x];  // Velocità X
+                  temp_Y(ion_local_dof_indices[i]) = NS_solution.block(0)[dof_y];  // Velocità Y
+                  temp_pressure(ion_local_dof_indices[i]) = NS_solution.block(1)[dof_p-dof_u];  // Pressione
+              } else {
+                  // Debug per DoF fuori dai limiti
+                  std::cerr << "Errore: Indice DoF fuori dai limiti. DoF X: " << dof_x << ", DoF Y: " << dof_y << ", DoF P: " << dof_p << std::endl;
+              }
+          }
 
-  // }
+      }
+  }
 
-//   while (cell != endc && NS_cell != NS_endc)
-// {
-//     if (cell->is_locally_owned() && NS_cell->is_locally_owned())
-//     {
-//         cell->get_dof_indices(local_dof_indices);         // Ottieni indici DoF globali per la cella elettrica
-//         NS_cell->get_dof_indices(NS_local_dof_indices);   // Ottieni indici DoF globali per la cella NS
+  // Compressione dei vettori dopo l'assegnazione
+  temp_X.compress(VectorOperation::insert);
+  temp_Y.compress(VectorOperation::insert);
+  temp_pressure.compress(VectorOperation::insert);
 
-//         // Ciclo sui DoF della cella elettrica
-//         for (unsigned int k = 0; k < dofs_per_cell; ++k)
-//         {
-//             const unsigned int global_dof_index = local_dof_indices[k];  // Indice globale del DoF elettrico
-
-//             // Verifica che l'indice globale del DoF elettrico sia posseduto localmente
-//             if (locally_owned_dofs.is_element(global_dof_index))
-//             {
-//                 const unsigned int local_index = locally_owned_dofs.index_within_set(global_dof_index);
-
-//                 // Per il problema Navier-Stokes, dobbiamo ottenere gli indici corretti per Vel_X, Vel_Y e pressione
-//                 const unsigned int global_index_NS_Vel_X = NS_local_dof_indices[k];
-//                 const unsigned int global_index_NS_Vel_Y = NS_local_dof_indices[dofs_per_cell + k];  // offset per Y
-//                 const unsigned int global_index_NS_pressure = NS_local_dof_indices[2 * dofs_per_cell + k];  // offset per pressione
-
-//                 // Verifica che gli indici per Vel_X, Vel_Y e pressione siano correttamente posseduti
-//                 if (owned_partitioning[0].is_element(global_index_NS_Vel_X) &&
-//                     owned_partitioning[0].is_element(global_index_NS_Vel_Y) &&
-//                     owned_partitioning[1].is_element(global_index_NS_pressure))
-//                 {
-//                     // Mappa gli indici nei vettori delle soluzioni di NS
-//                     const unsigned int local_index_NS_Vel_X = owned_partitioning[0].index_within_set(global_index_NS_Vel_X);
-//                     const unsigned int local_index_NS_Vel_Y = owned_partitioning[0].index_within_set(global_index_NS_Vel_Y);
-//                     const unsigned int local_index_NS_pressure = owned_partitioning[1].index_within_set(global_index_NS_pressure);
-
-//                     // Ora assegni i valori corretti nei vettori temporanei per Vel_X, Vel_Y e pressione
-//                     temp_X(local_index) = NS_solution.block(0)[local_index_NS_Vel_X];      // Velocità in X
-//                     temp_Y(local_index) = NS_solution.block(0)[local_index_NS_Vel_Y];      // Velocità in Y
-//                     temp_pressure(local_index) = NS_solution.block(1)[local_index_NS_pressure]; // Pressione
-
-//                     // Per debug o uso successivo, aggiorna la velocità massima
-//                     vel_max = std::max(vel_max, static_cast<double>(temp_X(local_index)));
-//                 }
-//             }
-//         }
-//     }
-
-//     // Passa alla cella successiva
-//     ++cell;
-//     ++NS_cell;
-// }
-
-
-// // Dichiarazione delle formule di quadratura per i problemi NS e ionico
-// const QTrapezoid<dim> quadrature_formula_ion;        // Per il problema elettrico (ionico)
-
-// FEValues<dim> fe_values(NS_fe, volume_quad_formula, update_values | update_quadrature_points | update_gradients | update_JxW_values);
-// FEValues<dim> fe_values_ion(fe, quadrature_formula_ion, update_values | update_gradients | update_quadrature_points);
-
-// const FEValuesExtractors::Vector velocities(0);   //Extractor cells velocities that takes the vector in position 0
-// const FEValuesExtractors::Scalar press(dim);   //Extractor cells pressure that takes the scalar in position dim
-
-// // Iterazione sulle celle attive di entrambi i problemi
-// for (auto NS_cell = NS_dof_handler.begin_active(), ion_cell = dof_handler.begin_active();
-//      NS_cell != NS_dof_handler.end() && ion_cell != dof_handler.end();
-//      ++NS_cell, ++ion_cell)
-//   {
-//     Assert(NS_cell->index() == ion_cell->index(), ExcMessage("Mismatch between NS and ion cells!"));
-
-//     if (NS_cell->is_locally_owned() && ion_cell->is_locally_owned()) {
-
-//       // Inizializzazione di FEValues per le celle correnti
-//       fe_values.reinit(NS_cell);
-//       fe_values_ion.reinit(ion_cell);
-
-//       // Estrazione dei valori delle velocità e della pressione nei punti di quadratura
-//       std::vector<Tensor<1, dim>> velocity_values(fe_values.n_quadrature_points);
-//       std::vector<double> pressure_values(fe_values.n_quadrature_points);
-
-//       fe_values[velocities].get_function_values(NS_solution, velocity_values);  // Velocità
-//       fe_values[press].get_function_values(NS_solution, pressure_values);    // Pressione
-
-//       // Estrazione dei DoF locali per la cella ionica (problema elettrico)
-//       std::vector<types::global_dof_index> ion_local_dof_indices(fe_values_ion.dofs_per_cell);
-//       ion_cell->get_dof_indices(ion_local_dof_indices);
-
-//       // Assegnazione dei valori di velocità e pressione ai DoF del problema elettrico
-//       for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q)
-//       {
-//         // Mappatura dei valori di velocità e pressione nei DoF del problema elettrico
-//         for (unsigned int i = 0; i < fe_values_ion.dofs_per_cell; ++i) {
-//           // Determina il contributo ai DoF del problema elettrico basato sui valori della cella Navier-Stokes
-//           // Supponiamo che i DoF ionici siano strutturati in modo da mappare direttamente con Navier-Stokes
-//           const Tensor<1, dim> &velocity = velocity_values[q];
-//           const double &pressure = pressure_values[q];
-
-//           // Assegna al vettore di velocità X, Y, e pressione
-//           temp_X(ion_local_dof_indices[i]) += velocity[0] * fe_values_ion.shape_value(i, q) * fe_values.JxW(q);
-//           temp_Y(ion_local_dof_indices[i]) += velocity[1] * fe_values_ion.shape_value(i, q) * fe_values.JxW(q);
-//           temp_pressure(ion_local_dof_indices[i]) += pressure * fe_values_ion.shape_value(i, q) * fe_values.JxW(q);
-//         }
-//       }
-//     }
-//   }
-
-// Dichiarazione delle formule di quadratura per i problemi NS e ionico
-const QTrapezoid<dim> quadrature_formula_ion;  // Per il problema elettrico (ionico)
-
-// FEValues per i problemi Navier-Stokes e ionico
-FEValues<dim> fe_values(NS_fe, volume_quad_formula, update_values | update_quadrature_points | update_gradients | update_JxW_values);
-FEValues<dim> fe_values_ion(fe, quadrature_formula_ion, update_values | update_gradients | update_quadrature_points | update_JxW_values);
-
-// Estrattori per velocità e pressione nel sistema di Navier-Stokes
-const FEValuesExtractors::Vector velocities(0);  // Estrai la velocità dalla posizione 0
-const FEValuesExtractors::Scalar press(dim);     // Estrai la pressione dalla posizione dim
-
-// Iterazione sulle celle attive di entrambi i problemi
-for (auto NS_cell = NS_dof_handler.begin_active(), ion_cell = dof_handler.begin_active();
-     NS_cell != NS_dof_handler.end() && ion_cell != dof_handler.end();
-     ++NS_cell, ++ion_cell)
-{
-    Assert(NS_cell->index() == ion_cell->index(), ExcMessage("Mismatch between NS and ion cells!"));
-
-    if (NS_cell->is_locally_owned() && ion_cell->is_locally_owned()) {
-
-        // Inizializzazione di FEValues per le celle correnti
-        fe_values.reinit(NS_cell);
-        fe_values_ion.reinit(ion_cell);
-
-        // Estrazione dei valori delle velocità e della pressione nei punti di quadratura
-        std::vector<Tensor<1, dim>> velocity_values(fe_values.n_quadrature_points);
-        std::vector<double> pressure_values(fe_values.n_quadrature_points);
-
-        fe_values[velocities].get_function_values(NS_solution, velocity_values);  // Velocità
-        fe_values[press].get_function_values(NS_solution, pressure_values);       // Pressione
-
-        // Estrazione dei DoF locali per la cella ionica (problema elettrico)
-        std::vector<types::global_dof_index> ion_local_dof_indices(fe_values_ion.dofs_per_cell);
-        ion_cell->get_dof_indices(ion_local_dof_indices);
-
-        // Variabili per calcolare le somme di velocità e pressione
-        double vel_x_sum = 0.0, vel_y_sum = 0.0, pressure_sum = 0.0;
-
-        // Ciclo sui punti di quadratura di Navier-Stokes per sommare i contributi
-        for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q) {
-            const Tensor<1, dim> &velocity = velocity_values[q];
-            const double &pressure = pressure_values[q];
-
-            // Somma i valori di velocità e pressione per tutti i DoF della cella Navier-Stokes
-            for (unsigned int i = 0; i < fe_values.dofs_per_cell; ++i) {
-                vel_x_sum += velocity[0] * fe_values.shape_value(i, q) * fe_values.JxW(q);  // Velocità X
-                vel_y_sum += velocity[1] * fe_values.shape_value(i, q) * fe_values.JxW(q);  // Velocità Y
-                pressure_sum += pressure * fe_values.shape_value(i, q) * fe_values.JxW(q);  // Pressione
-            }
-        }
-
-        // Media dei valori di velocità e pressione su tutti i DoF della cella Navier-Stokes
-        double vel_x_avg = vel_x_sum / fe_values.dofs_per_cell;
-        double vel_y_avg = vel_y_sum / fe_values.dofs_per_cell;
-        double pressure_avg = pressure_sum / fe_values.dofs_per_cell;
-
-        // Assegnazione delle medie ai DoF del problema elettrico
-        for (unsigned int i = 0; i < ion_local_dof_indices.size(); ++i) {
-            // Mappa la media nei DoF del problema elettrico (4 DoF per cella)
-            temp_X(ion_local_dof_indices[i]) += vel_x_avg * fe_values_ion.shape_value(i, 0) * fe_values_ion.JxW(0);
-            temp_Y(ion_local_dof_indices[i]) += vel_y_avg * fe_values_ion.shape_value(i, 0) * fe_values_ion.JxW(0);
-            temp_pressure(ion_local_dof_indices[i]) += pressure_avg * fe_values_ion.shape_value(i, 0) * fe_values_ion.JxW(0);
-        }
-    }
-}
-
-
-
-
-  // Compressione dei vettori di velocità e pressione dopo l'assegnazione
-  temp_X.compress(VectorOperation::add);
-  temp_Y.compress(VectorOperation::add);
-  temp_pressure.compress(VectorOperation::add);
-  
+  // Assegnazione finale
   Vel_X = temp_X;
   Vel_Y = temp_Y;
   pressure = temp_pressure;
@@ -2237,7 +2005,7 @@ void drift_diffusion<dim>::run()
   int step_number = 0;   // time evolution step
 
   const unsigned int max_it = 1e+3;    // riferito al gummel algorithm
-  const unsigned int max_steps = 500;  // riferito al time loop
+  const unsigned int max_steps = 1100;  // riferito al time loop
 
   const double time_tol = 1.0e-3;    // riferito al time loop
   const double tol = 1.e-9;         // tolleranza poisson newton
@@ -2249,16 +2017,21 @@ void drift_diffusion<dim>::run()
   // START THE ALGORITHM
   pcout << "   START COMPLETE PROBLEM ... "<< std::endl;
 
-while (step_number < max_steps && time_err > time_tol){
+while (step_number < max_steps /*&& time_err > time_tol*/){
     
-
   ++step_number;
 
   // Faster time-stepping (adaptive time-stepping would be MUCH better!)
-  if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-3){
-    timestep*= 10.;
-    timestep_NS*=10.;
-    }
+  // if (step_number % 40 == 1 && step_number > 1 && timestep < 1.e-1){
+  //   timestep*= 10.;
+  //   timestep_NS*=10.;
+  //   }
+
+  if (step_number == 200 && timestep < 1.e-1){
+  timestep*= 10.;
+  timestep_NS*=10.;
+  }
+
 
   int it = 0;                       // internal gummel iterator
   const double gummel_tol = 6.e-4;  // riferito al gummel algorithm
@@ -2343,29 +2116,29 @@ if (!std::filesystem::exists(output_directory))
 
 DataOut<dim> data_out;
 
-// data_out.attach_dof_handler(dof_handler);
+data_out.attach_dof_handler(dof_handler);
 
-// data_out.add_data_vector(potential, "potential");
-// data_out.add_data_vector(pressure, "pressure");
-// data_out.add_data_vector(Vel_X, "Vel_X");
-// data_out.add_data_vector(Vel_Y, "Vel_Y");
-// data_out.add_data_vector(ion_density, "Ion_Density");
-// data_out.add_data_vector(Field_X, "Field_X");
-// data_out.add_data_vector(Field_Y, "Field_Y");
+data_out.add_data_vector(potential, "potential");
+data_out.add_data_vector(pressure, "pressure");
+data_out.add_data_vector(Vel_X, "Vel_X");
+data_out.add_data_vector(Vel_Y, "Vel_Y");
+data_out.add_data_vector(ion_density, "Ion_Density");
+data_out.add_data_vector(Field_X, "Field_X");
+data_out.add_data_vector(Field_Y, "Field_Y");
 
 
-data_out.attach_dof_handler(NS_dof_handler);
+// data_out.attach_dof_handler(NS_dof_handler);
 
-std::vector<std::string> solution_names(dim, "velocity");
-solution_names.push_back("pressure");
+// std::vector<std::string> solution_names(dim, "velocity");
+// solution_names.push_back("pressure");
 
-std::vector<DataComponentInterpretation::DataComponentInterpretation> data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
-data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);                                              
-// vector to be output must be ghosted
-data_out.add_data_vector(NS_solution,
-                        solution_names,
-                        DataOut<dim>::type_dof_data,
-                        data_component_interpretation);
+// std::vector<DataComponentInterpretation::DataComponentInterpretation> data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
+// data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);                                              
+// // vector to be output must be ghosted
+// data_out.add_data_vector(NS_solution,
+//                         solution_names,
+//                         DataOut<dim>::type_dof_data,
+//                         data_component_interpretation);
 
 
 Vector<float> subdomain(triangulation.n_active_cells());
@@ -2535,14 +2308,35 @@ FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, c
 	return tria_matrix;
 }
 //---------------------------------------------------------------------------------------------------------------------------------------------------
-Tensor<1,2> get_emitter_normal(const Point<2> a) {
+// Tensor<1,2> get_emitter_normal(const Point<2> a) {
 
-	Tensor<1,2> normal;
+// 	Tensor<1,2> normal;
 
-	normal[0] = a[0];
-	normal[1] = a[1];
+// 	normal[0] = a[0];
+// 	normal[1] = a[1];
 
-	const double norm = std::sqrt(normal[0]*normal[0]+normal[1]*normal[1]);
+// 	const double norm = std::sqrt(normal[0]*normal[0]+normal[1]*normal[1]);
 
-	return normal/norm;
+// 	return normal/norm;
+// }
+
+
+Tensor<1,2> get_emitter_normal(const Point<2> &a, const Point<2> &emitter_center) {
+
+    Tensor<1,2> normal;
+
+    // Calcola la differenza tra il punto e il centro dell'emettitore
+    normal[0] = a[0] - emitter_center[0];
+    normal[1] = a[1] - emitter_center[1];
+
+    // Calcola la norma del vettore
+    const double norm = std::sqrt(normal[0]*normal[0] + normal[1]*normal[1]);
+
+    // Evita la divisione per zero
+    if (norm == 0) {
+        throw std::runtime_error("Punto coincide con il centro dell'emettitore. La normale non è definita.");
+    }
+
+    // Restituisce il vettore normalizzato
+    return normal / norm;
 }
