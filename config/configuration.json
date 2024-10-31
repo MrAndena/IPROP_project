@@ -1,7 +1,7 @@
 {
   "fluid_parameters": {
     "viscosity": 0.01,
-    "gamma":10.0,
+    "gamma":1.0,
     "p_over_rho":0.0
   },
   "electrical_parameters": {
@@ -17,7 +17,7 @@
     "N_min":1.0e+9,
     "Mm": 29.0e-3,
     "Avo": 6.022e+23,
-    "Ve":2.0e+4
+    "Ve":4e+4
   },
   "geometrical_parameters": {
 
@@ -44,7 +44,7 @@
     }
   },
   "simulation_specification": {
-    "mesh_name":"coarse_WW.msh",
+    "mesh_name":"WireWire70.msh",
     "mesh_TAG":"WW"
   
   }

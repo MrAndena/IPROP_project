@@ -17,7 +17,7 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
   , face_quad_formula(degree + 2)   //non cerano nell'originale
   , NS_mapping() // serve ? nel nostro NS non cè
   , timestep(1e-5) // timestep for the DD algorithm
-  , timestep_NS(40*1e-5) // come in INSIMEX     //DA GESTIRE
+  , timestep_NS(1e-4) // come in INSIMEX     //DA GESTIRE
   , timer(mpi_communicator, pcout, TimerOutput::never, TimerOutput::wall_times)
 {}
 
@@ -394,9 +394,11 @@ auto boundary_evaluator_emitter = [&] (const Point<dim> &p) //lambda function
   Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
   Tensor<1,dim> normal = get_emitter_normal(p,center);
 
-  const double En = grad_U*normal;
+  // const double En = grad_U*normal;
 
-  const double EXP = std::exp((-En-E_ON)/E_ref); 
+  // const double EXP = std::exp((-En-E_ON)/E_ref); 
+
+	const double EXP = std::exp((grad_U.norm()-E_ON)/E_ref);
 
   const double value =  N_ref * EXP; 
 
@@ -465,7 +467,7 @@ if (iter != stringToCase.end()) {
 
             // VectorTools::interpolate_boundary_values(dof_handler, 0, Functions::ZeroFunction<dim>(), ion_constraints);   // Up and down
             VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator_emitter), ion_constraints);    // Emitter
-            VectorTools::interpolate_boundary_values(dof_handler,4, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator_collector), ion_constraints);  // Collector
+            VectorTools::interpolate_boundary_values(dof_handler,4, Functions::ConstantFunction<dim>(1e9), ion_constraints);  // Collector
             VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ConstantFunction<dim>(N_0), ion_constraints);   // Inlet
             // VectorTools::interpolate_boundary_values(dof_handler, 2, Functions::ZeroFunction<dim>(), ion_constraints);   // Outlet
 
@@ -841,7 +843,7 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
     // pcout << "-------------------------------------------------------- " << std::endl;
 
     //Solve poisson system problem
-    const double coeff = 1e-3;
+    const double coeff = 1e-2;
     SolverControl sc_p(dof_handler.n_dofs(), /*1e-10*/coeff *poisson_rhs.l2_norm());     
     PETScWrappers::SparseDirectMUMPS solverMUMPS(sc_p); 
     solverMUMPS.solve(system_matrix_poisson, poisson_newton_update, poisson_rhs); // sulla matrice ci sono
@@ -946,7 +948,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
   
 
   const unsigned int vertices_per_cell = 4;
-  //FullMatrix<double> Robin(vertices_per_cell, vertices_per_cell);
+  FullMatrix<double> Robin(vertices_per_cell, vertices_per_cell);
 
   std::vector<types::global_dof_index> local_dof_indices(vertices_per_cell);
 
@@ -964,7 +966,13 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
   
   evaluate_electric_field(); // compute Field_X and Field_Y
 
-  //const double Vh = std::sqrt(8.*numbers::PI*kB * T / Mm * Avo / 2. / numbers::PI); // Hopf velocity
+  const double p_amb = m_data.electrical_parameters.stratosphere ? 5474 : 101325; 
+  const double delta = p_amb/101325*298/T;   
+  const double Mm = 29.e-3; // kg m^-3,average air molar mass
+  const double Avo = 6.022e+23; // Avogadro's number
+  const double mu = mu0 * delta; // scaled mobility from Moseley
+
+  const double Vh = std::sqrt(8.*numbers::PI*kB * T / Mm * Avo / 2. / numbers::PI); // Hopf velocity
   //const double Vh = std::sqrt(kB * T / Mm * Avo / 2. / numbers::PI); // Thermal velocity
 
 
@@ -988,7 +996,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
 
             cell->get_dof_indices(local_dof_indices); //Recupera gli indici globali dei gradi di libertà associati alla cella corrente
 
-            /*
+            
             // Robin conditions at outlet and (optional) at collector
             if (cell->at_boundary()) {
 
@@ -1044,7 +1052,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
                 }
             }
             // End Robin conditions
-            */
+            
 
             // Lexicographic ordering
             const Point<dim> v1 = cell->vertex(2); // top left
@@ -1138,17 +1146,17 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
                         }
                     }
 
-                    /*
+                    
                     for (unsigned int i = 0; i < vertices_per_cell; ++i) {
                         for (unsigned int j = 0; j < vertices_per_cell; ++j) {
                             Robin(i,j) = Robin(i,j)*timestep;
                         }
-                    }*/
+                    }
                     
                     
                     ion_constraints.distribute_local_to_global(A, A_cell_rhs,  A_local_dof_indices, ion_system_matrix, ion_rhs);
                     ion_constraints.distribute_local_to_global(B, B_cell_rhs,  B_local_dof_indices, ion_system_matrix, ion_rhs);
-                    //ion_constraints.distribute_local_to_global(Robin,  cell_rhs, local_dof_indices, ion_system_matrix, ion_rhs);
+                    ion_constraints.distribute_local_to_global(Robin,  cell_rhs, local_dof_indices, ion_system_matrix, ion_rhs);
 
         }
 	 }
@@ -1162,7 +1170,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
 template <int dim>
 void drift_diffusion<dim>::solve_drift_diffusion()
 { 
-  const double coeff = 1e-3;
+  const double coeff = 1e-2;
   PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
   SolverControl sc_ion(dof_handler.n_dofs(), /*1e-10*/coeff *ion_rhs.l2_norm());
   PETScWrappers::SparseDirectMUMPS solverMUMPS_ion(sc_ion); 
@@ -1335,6 +1343,7 @@ void drift_diffusion<dim>::setup_NS()
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar vertical_velocity(1);
     const FEValuesExtractors::Vector vertical_velocity_and_pressure(1);
+    const FEValuesExtractors::Scalar pressure(dim);
 
 
     std::unordered_map<std::string, int> stringToCase{
@@ -1360,7 +1369,8 @@ void drift_diffusion<dim>::setup_NS()
 
             VectorTools::interpolate_boundary_values(NS_dof_handler, 3, Functions::ZeroFunction<dim>(dim+1), nonzero_NS_constraints, NS_fe.component_mask(velocities));
             VectorTools::interpolate_boundary_values(NS_dof_handler, 4, Functions::ZeroFunction<dim>(dim+1), nonzero_NS_constraints, NS_fe.component_mask(velocities));
-
+            // VectorTools::interpolate_boundary_values(NS_dof_handler, 4, Functions::ZeroFunction<dim>(), nonzero_NS_constraints, NS_fe.component_mask(pressure));
+            VectorTools::interpolate_boundary_values(NS_dof_handler, 4, Functions::ZeroFunction<dim>(dim+1), nonzero_NS_constraints, NS_fe.component_mask(vertical_velocity_and_pressure)); 
             break;
         }
 
@@ -1386,7 +1396,7 @@ void drift_diffusion<dim>::setup_NS()
                                                       
               VectorTools::interpolate_boundary_values(NS_dof_handler, 
                                                       1,                    // Inlet
-                                                      BoundaryValues<dim>(10.0), // Functions::ZeroFunction<dim>(dim+1), 
+                                                      BoundaryValues<dim>(1.0), // Functions::ZeroFunction<dim>(dim+1), 
                                                       nonzero_NS_constraints, 
                                                       NS_fe.component_mask(velocities));
                                                       
@@ -1430,6 +1440,8 @@ void drift_diffusion<dim>::setup_NS()
 
             VectorTools::interpolate_boundary_values(NS_dof_handler, 3, Functions::ZeroFunction<dim>(dim+1), zero_NS_constraints, NS_fe.component_mask(velocities));
             VectorTools::interpolate_boundary_values(NS_dof_handler, 4, Functions::ZeroFunction<dim>(dim+1), zero_NS_constraints, NS_fe.component_mask(velocities));
+            // VectorTools::interpolate_boundary_values(NS_dof_handler, 4, Functions::ZeroFunction<dim>(), zero_NS_constraints, NS_fe.component_mask(pressure));
+            VectorTools::interpolate_boundary_values(NS_dof_handler, 4, Functions::ZeroFunction<dim>(dim+1), zero_NS_constraints, NS_fe.component_mask(vertical_velocity_and_pressure)); 
 
             break;
         }
@@ -1772,7 +1784,7 @@ drift_diffusion<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
     if (time_step < 2) {
         coeff = 1e-2;
     } else {
-        coeff = 1e-4;
+        coeff = 1e-1;
     }
 
     //Used by iterative methods to determine whether the iteration should be continued
@@ -1862,8 +1874,6 @@ void drift_diffusion<dim>::solve_navier_stokes()
 
 	const unsigned int dofs_per_NS_cell = NS_fe.n_dofs_per_cell();
 	std::vector<types::global_dof_index> NS_local_dof_indices(dofs_per_NS_cell);
-
-  pcout << "   NS_local_dof_indices size: " << NS_local_dof_indices.size() << std::endl;
 
 	auto cell = dof_handler.begin_active();    //Numero dof tra DD (ordine 1) e NS (ordine velocità e pressione diversi) sono diversi
 	auto NS_cell = NS_dof_handler.begin_active();
@@ -2028,8 +2038,8 @@ while (step_number < max_steps /*&& time_err > time_tol*/){
   //   }
 
   if (step_number == 200 && timestep < 1.e-1){
-  timestep*= 10.;
-  timestep_NS*=10.;
+  timestep*= 2.;
+  timestep_NS*=2.;
   }
 
 
@@ -2083,7 +2093,7 @@ while (step_number < max_steps /*&& time_err > time_tol*/){
   old_ion_density = ion_density;
 
 
-  if (step_number % 40 == 1){ // NS solution update every 40 timesteps
+  if (step_number % 10 == 1){ // NS solution update every 40 rs
     time_NS += 1;
     pcout << "   START NAVIER STOKES PROBLEM ... "<< std::endl; 
     solve_navier_stokes();

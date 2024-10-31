@@ -55,7 +55,7 @@
     // where CG solvers are used for $M_p^{-1}$ and $S_m^{-1}$.
     {
       TimerOutput::Scope timer_section(timer, "CG for Mp");
-      SolverControl mp_control(10*src.block(1).size(),
+      SolverControl mp_control(100*src.block(1).size(),
                                5e-1 * src.block(1).l2_norm(), true);
 
       // PETScWrappers::SolverCG cg_mp(mp_control,
@@ -73,7 +73,7 @@
     // $-\frac{1}{dt}S_m^{-1}v_1$
     {
       TimerOutput::Scope timer_section(timer, "CG for Sm");
-      SolverControl sm_control(10*src.block(1).size(),              //Control class to determine convergence of iterative solvers
+      SolverControl sm_control(100*src.block(1).size(),              //Control class to determine convergence of iterative solvers
                                5e-1 * src.block(1).l2_norm(), true);
 
       // PETScWrappers::SolverCG cg_sm(sm_control,
@@ -101,7 +101,7 @@
     // using another CG solver.
     {
       TimerOutput::Scope timer_section(timer, "CG for A");
-      SolverControl a_control(10*src.block(0).size(),
+      SolverControl a_control(100*src.block(0).size(),
                               5e-1 * src.block(0).l2_norm(), true);
                               
       // PETScWrappers::SolverCG cg_a(a_control,
