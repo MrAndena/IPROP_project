@@ -1,5 +1,5 @@
 #include "config_reader.hpp"
-#include "drift_diffusion.hpp"
+#include "CompleteProblem.hpp"
 
 int main(int argc, char** argv){ 
 

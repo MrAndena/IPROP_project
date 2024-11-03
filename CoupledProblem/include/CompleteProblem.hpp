@@ -26,6 +26,9 @@
 #include <deal.II/lac/affine_constraints.h>
 #include <deal.II/lac/sparse_ilu.h> // ILU preconditioning
 
+#include <deal.II/lac/petsc_solver.h>
+
+
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/matrix_tools.h> // For Laplace Matrix
@@ -38,6 +41,8 @@
 #include "data_struct.hpp"
 #include "BlockSchurPreconditioner.hpp"
 #include "CollectorGeometryNS.hpp"
+#include "BoundaryValues.hpp"
+
 
 
 
@@ -64,13 +69,12 @@ private:
     void solve_homogeneous_poisson(); 
     void solve_nonlinear_poisson(const unsigned int max_iterations,const double tol); // update poisson and eta
 
-    void setup_drift_diffusion(const bool reinitialize_densities); //setup DD
+    void setup_drift_diffusion(); //setup DD
+    void update_ion_boundary_condition();
     void assemble_drift_diffusion_mass_matrix();
     void assemble_drift_diffusion_matrix(); // build DD matrix
-    //void apply_drift_diffusion_boundary_conditions(Vector<double> &solution);  in teoria non serve come in DD
     void solve_drift_diffusion();  // used inside "perform_dd.." to update ion_density
     void perform_drift_diffusion_fixed_point_iteration_step();  // this method update ion_density
-
 
     void setup_NS();
     void assemble_NS(bool use_nonzero_constraints, bool assemble_system);
@@ -80,18 +84,17 @@ private:
 
     void evaluate_electric_field(); // usato sia in assemble_DD che in solve_NS 
     void output_results(const unsigned int step); // preso dal nostro DD dovrebbe funzionare dovrebbere essere const method no?
-
+    
     // Data for the simulation
     data_struct m_data;
-    unsigned short int simulation_tag;
-
+    
     // Parallel data
     MPI_Comm mpi_communicator;
     ConditionalOStream pcout;
-
+    
     // Object for the mesh
     parallel::distributed::Triangulation<dim> &triangulation; 
-
+    
     // DRIFT-DIFFUSION PART
 
     // Indexsets
@@ -108,17 +111,20 @@ private:
     AffineConstraints<double> zero_constraints_poisson;
     AffineConstraints<double> constraints_poisson;
 
+    AffineConstraints<double> constraints_poisson_update;
+    
     // Poisson Matrices
     PETScWrappers::MPI::SparseMatrix laplace_matrix_poisson;
     PETScWrappers::MPI::SparseMatrix mass_matrix_poisson;
     PETScWrappers::MPI::SparseMatrix system_matrix_poisson;
+    PETScWrappers::MPI::SparseMatrix density_matrix;
 
     PETScWrappers::MPI::SparseMatrix initial_matrix_poisson;
-
+    
     // Drift-Diffusion Matrices
     PETScWrappers::MPI::SparseMatrix ion_system_matrix;
     PETScWrappers::MPI::SparseMatrix ion_mass_matrix;
-
+    
     // Poisson Vectors
     PETScWrappers::MPI::Vector poisson_newton_update;
     PETScWrappers::MPI::Vector potential;
@@ -128,7 +134,7 @@ private:
 
     PETScWrappers::MPI::Vector Field_X; //electric field
     PETScWrappers::MPI::Vector Field_Y;
-
+    
     // Drift-Diffusion Vectors
     PETScWrappers::MPI::Vector old_ion_density;
     PETScWrappers::MPI::Vector ion_density;
@@ -181,16 +187,16 @@ private:
     std::vector<IndexSet> owned_partitioning;                //  non c'era nell'originale complete problem
     std::vector<IndexSet> relevant_partitioning;             // non c'era nell'originale complete problem
 
+    IndexSet owned_partitioning_p;
+
     IndexSet NS_locally_relevant_dofs; //nuovo
 
 
-    // Step and Timestep
-    unsigned int step_number = 0;
-    double timestep = 0;
-
-    // Timer and Time
-    Time time_NS;
+    double time_NS = 0;
+    double timestep_NS;
     mutable TimerOutput timer;
+    double timestep = 0;
+    SparsityPattern      sparsity_pattern_poisson;
 };
 
 // HELPER FUNCTIONS FOR LOCAL TRIANGLE ASSEMBLE (Drift-Diffusion)
@@ -198,10 +204,79 @@ void bernoulli (double x, double &bp, double &bn);
 double side_length (const Point<2> a, const Point<2> b);
 double triangle_denom(const Point<2> a, const Point<2> b, const Point<2> c);
 Tensor<1,2> face_normal(const Point<2> a, const Point<2> b);
-FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31, const data_struct& m_data);
+FullMatrix<double> compute_triangle_matrix(const Point<2> a, const Point<2> b, const Point<2> c, const double alpha12, const double alpha23, const double alpha31, const double D);
+// Tensor<1,2> get_emitter_normal(const Point<2> a);
+Tensor<1,2> get_emitter_normal(const Point<2> &a, const Point<2> &emitter_center);
 
-// HELPER FUNCTION FOR THRUST COMPUTATION
-Tensor<1,2> get_emitter_normal(const Point<2> a) ;
 
 
-#include "Complete_problem_impl_con_modifiche_homo.hpp"
+// ESPERIMENTO CON TEMPLATE PER LE BCS
+template <int dim>
+class DynamicBoundaryValues : public Function<dim>
+{
+public:
+
+    DynamicBoundaryValues(const PETScWrappers::MPI::Vector &vec_1, 
+                          const PETScWrappers::MPI::Vector &vec_2,
+                          const PETScWrappers::MPI::Vector &vec_3,
+                          const DoFHandler<dim> &dh,
+                          const MappingQ1<dim>  &map,
+                          const data_struct &d): 
+    Function<dim>(), pot(vec_1),ion(vec_2),old_ion(vec_3), dof_handler(dh), mapping(map), m_data(d){}
+
+    virtual double value(const dealii::Point<dim> &p, const unsigned int component = 0) const override;
+    
+private:
+    const PETScWrappers::MPI::Vector &pot;
+    const PETScWrappers::MPI::Vector &ion;
+    const PETScWrappers::MPI::Vector &old_ion;
+    const DoFHandler<dim> &dof_handler;
+    const MappingQ1<dim>  &mapping;
+    const data_struct &m_data;
+};
+
+
+template <int dim>
+double DynamicBoundaryValues<dim>::value(const Point<dim> & p,const unsigned int component) const 
+{ 
+
+const double E_ON  = m_data.electrical_parameters.E_ON;
+const double E_ref = m_data.electrical_parameters.E_ref;
+const double N_ref = m_data.electrical_parameters.N_ref;
+const double N_min = m_data.electrical_parameters.N_min;
+
+double theta;
+const double k_min = 0.5;
+const double k_max = 2;
+
+const double ion_norm = ion.l2_norm();
+const double old_ion_norm = old_ion.l2_norm();
+const double condition = ion_norm / old_ion_norm;
+
+if(condition <= k_max && condition >= k_min){
+    theta = 1;
+}
+
+if(condition > k_max){
+   theta = (k_max -1)/(condition -1);
+}
+
+if(condition < k_min){
+   theta = (k_min -1)/(condition -1);
+}
+
+std::cout<<"theta is: "<<theta<<std::endl;
+
+Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_1(dof_handler, ion, mapping);
+Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object_2(dof_handler, old_ion, mapping);
+
+const double ion_value = solution_as_function_object_1.value(p);
+const double old_ion_value = solution_as_function_object_2.value(p);
+
+const double value = theta*old_ion_value +(1-theta)*ion_value;
+
+return value;
+
+}
+
+#include "CompleteProblem_impl.hpp"

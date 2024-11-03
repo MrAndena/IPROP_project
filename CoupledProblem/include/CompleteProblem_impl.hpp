@@ -1,5 +1,5 @@
 template <int dim>
-drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> &tria,  // triangulation for the mesh
+CompleteProblem<dim>::CompleteProblem(parallel::distributed::Triangulation<dim> &tria,  // triangulation for the mesh
                                                              const data_struct &d)  // data struct from the user
   : m_data(d)
   , mpi_communicator(MPI_COMM_WORLD)
@@ -24,7 +24,7 @@ drift_diffusion<dim>::drift_diffusion(parallel::distributed::Triangulation<dim> 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------
 
 template <int dim>
-void drift_diffusion<dim>::setup_poisson()
+void CompleteProblem<dim>::setup_poisson()
 {
 
 //fix the constant
@@ -173,7 +173,7 @@ constraints_poisson_update.close();
 }
 //----------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::assemble_initial_system()
+void CompleteProblem<dim>::assemble_initial_system()
 {
 
 const QTrapezoid<dim> quadrature_formula;
@@ -230,7 +230,7 @@ initial_poisson_rhs.compress(VectorOperation::add);
 }
 //--------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>  
-void drift_diffusion<dim>::solve_homogeneous_poisson() // find the initial value for the potential
+void CompleteProblem<dim>::solve_homogeneous_poisson() // find the initial value for the potential
 {
   
   PETScWrappers::MPI::Vector temp;
@@ -250,7 +250,7 @@ void drift_diffusion<dim>::solve_homogeneous_poisson() // find the initial value
 }
 //--------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::assemble_poisson_laplace_matrix()
+void CompleteProblem<dim>::assemble_poisson_laplace_matrix()
 {
 const QTrapezoid<dim> quadrature_formula;
 
@@ -296,7 +296,7 @@ laplace_matrix_poisson.compress(VectorOperation::add);
 //------------------------------------------------------------------------------------------------------------------------------
 
 template <int dim>
-void drift_diffusion<dim>::assemble_poisson_mass_matrix()
+void CompleteProblem<dim>::assemble_poisson_mass_matrix()
 {
 const QTrapezoid<dim> quadrature_formula;
 
@@ -344,7 +344,7 @@ mass_matrix_poisson.compress(VectorOperation::add);
 //----------------------------------------------------------------------------------------------------------------------------  
   
 template <int dim>
-void drift_diffusion<dim>::setup_drift_diffusion()
+void CompleteProblem<dim>::setup_drift_diffusion()
 { 
 
 //fix the constants
@@ -517,7 +517,7 @@ ion_system_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_c
 }
 //--------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::update_ion_boundary_condition(){
+void CompleteProblem<dim>::update_ion_boundary_condition(){
 
 
 double theta;
@@ -646,7 +646,7 @@ ion_system_matrix.reinit(locally_owned_dofs, locally_owned_dofs, ion_dsp,  mpi_c
 //------------------------------------------------------------------------------------------------------------------------------
 
 template <int dim>
-void drift_diffusion<dim>::assemble_drift_diffusion_mass_matrix()
+void CompleteProblem<dim>::assemble_drift_diffusion_mass_matrix()
 {
   const QTrapezoid<dim> quadrature_formula;
 
@@ -694,7 +694,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_mass_matrix()
 //---------------------------------------------------------------------------------------------------------------------------------------------------
 
 template <int dim>
-void drift_diffusion<dim>::assemble_nonlinear_poisson()
+void CompleteProblem<dim>::assemble_nonlinear_poisson()
   { 
     // Fix the constants
     const double q0 = m_data.electrical_parameters.q0;
@@ -750,7 +750,7 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
   }
   //----------------------------------------------------------------------------------------------------------------------------
   template <int dim>
-  double drift_diffusion<dim>::solve_poisson()
+  double CompleteProblem<dim>::solve_poisson()
   { 
 
     // Fixing costants
@@ -886,7 +886,7 @@ void drift_diffusion<dim>::assemble_nonlinear_poisson()
 
 //-----------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::solve_nonlinear_poisson(const unsigned int max_iter_newton, 
+void CompleteProblem<dim>::solve_nonlinear_poisson(const unsigned int max_iter_newton, 
                                                    const double toll_newton){
 
   unsigned int counter = 0; // it keeps track of newton iteration
@@ -928,7 +928,7 @@ void drift_diffusion<dim>::solve_nonlinear_poisson(const unsigned int max_iter_n
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 
 template <int dim>
-void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
+void CompleteProblem<dim>::assemble_drift_diffusion_matrix()
 { 
   
   //fix the constants
@@ -1165,7 +1165,7 @@ void drift_diffusion<dim>::assemble_drift_diffusion_matrix()
 
 //--------------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::solve_drift_diffusion()
+void CompleteProblem<dim>::solve_drift_diffusion()
 { 
   const double coeff = 1e-2;
   PETScWrappers::MPI::Vector temp(locally_owned_dofs, mpi_communicator);
@@ -1181,7 +1181,7 @@ void drift_diffusion<dim>::solve_drift_diffusion()
 }
 //--------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::perform_drift_diffusion_fixed_point_iteration_step() // method used to update ion_density
+void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step() // method used to update ion_density
 {  
     
   //sistema da risolvere: (MASS  +  DELTA_T * DD_MATRIX)*ION_DENS = MASS*OLD_ION_DENS   (q0 del paper???) ???
@@ -1220,7 +1220,7 @@ void drift_diffusion<dim>::perform_drift_diffusion_fixed_point_iteration_step() 
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::evaluate_electric_field()
+void CompleteProblem<dim>::evaluate_electric_field()
 {
   // Inizializzazione dei vettori per i campi elettrici
   // Field_X.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);      
@@ -1307,7 +1307,7 @@ void drift_diffusion<dim>::evaluate_electric_field()
 //##################### - Navier-Stokes - #####################################################################################
 
 template <int dim>
-void drift_diffusion<dim>::setup_NS()
+void CompleteProblem<dim>::setup_NS()
   {
     
     //SET UP DOFS
@@ -1544,7 +1544,7 @@ void drift_diffusion<dim>::setup_NS()
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::assemble_NS(bool use_nonzero_constraints,
+void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
                                        bool assemble_system)
 { 
   
@@ -1763,7 +1763,7 @@ void drift_diffusion<dim>::assemble_NS(bool use_nonzero_constraints,
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
 std::pair<unsigned int, double>
-drift_diffusion<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step)
+CompleteProblem<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_system, double time_step)
 {
     if (assemble_system)
     {
@@ -1808,7 +1808,7 @@ drift_diffusion<dim>::solver_NS(bool use_nonzero_constraints, bool assemble_syst
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::solve_navier_stokes()
+void CompleteProblem<dim>::solve_navier_stokes()
 {
 	evaluate_electric_field();   //Serve ad assembly_NS;   crea Field_X e Field_Y
 
@@ -1958,7 +1958,7 @@ void drift_diffusion<dim>::solve_navier_stokes()
 //############ - RUN AND OUTPUT RESULTS - #######################################################################################################
 
 template <int dim>
-void drift_diffusion<dim>::run()
+void CompleteProblem<dim>::run()
 {
 
   // fix the constants
@@ -2106,7 +2106,7 @@ while (step_number < max_steps /*&& time_err > time_tol*/){
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 template <int dim>
-void drift_diffusion<dim>::output_results(const unsigned int cycle)
+void CompleteProblem<dim>::output_results(const unsigned int cycle)
 {
 
 // Base directory for output
