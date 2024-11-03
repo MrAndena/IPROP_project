@@ -82,8 +82,8 @@ private:
     void solve_navier_stokes();
     // void estimate_thrust();
 
-    void evaluate_electric_field(); // usato sia in assemble_DD che in solve_NS 
-    void output_results(const unsigned int step); // preso dal nostro DD dovrebbe funzionare dovrebbere essere const method no?
+    void evaluate_electric_field(); 
+    void output_results(const unsigned int step); 
     
     // Data for the simulation
     data_struct m_data;
@@ -106,7 +106,6 @@ private:
     DoFHandler<dim> dof_handler;
     MappingQ1<dim>  mapping;
 
-    // Constraints (messi come l'ultimo dd, non ci sono gli elettorni)
     AffineConstraints<double> ion_constraints;
     AffineConstraints<double> zero_constraints_poisson;
     AffineConstraints<double> constraints_poisson;
@@ -149,7 +148,7 @@ private:
     PETScWrappers::MPI::Vector Vel_Y;  // poi però mette anche quello a blocchi
     PETScWrappers::MPI::Vector pressure;
 
-    PETScWrappers::MPI::Vector current_values; // a che serve ?
+    PETScWrappers::MPI::Vector current_values; 
 
     // NS Parameters
     double viscosity;
@@ -183,9 +182,9 @@ private:
     PETScWrappers::MPI::BlockVector NS_solution_update;
     PETScWrappers::MPI::BlockVector NS_system_rhs;
 
-    std::shared_ptr<BlockSchurPreconditioner> preconditioner; // non c'era nell'originale complete problem
-    std::vector<IndexSet> owned_partitioning;                //  non c'era nell'originale complete problem
-    std::vector<IndexSet> relevant_partitioning;             // non c'era nell'originale complete problem
+    std::shared_ptr<BlockSchurPreconditioner> preconditioner; 
+    std::vector<IndexSet> owned_partitioning;                
+    std::vector<IndexSet> relevant_partitioning;             
 
     IndexSet owned_partitioning_p;
 
@@ -210,7 +209,6 @@ Tensor<1,2> get_emitter_normal(const Point<2> &a, const Point<2> &emitter_center
 
 
 
-// ESPERIMENTO CON TEMPLATE PER LE BCS
 template <int dim>
 class DynamicBoundaryValues : public Function<dim>
 {

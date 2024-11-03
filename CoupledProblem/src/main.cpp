@@ -29,7 +29,7 @@ int main(int argc, char** argv){
 
                 create_triangulation(tria, my_data);
 
-                drift_diffusion<2> problem(tria, my_data);
+                CompleteProblem<2> problem(tria, my_data);
 
                 problem.run();
 
