@@ -475,59 +475,110 @@ void InsIMEX<dim>::run()
 template <int dim>
 void InsIMEX<dim>::output_results(const unsigned int output_index) const
 {
-    TimerOutput::Scope timer_section(timer, "Output results");
-    pcout << "Writing results..." << std::endl;
+
+    // Base directory for output
+    std::string base_directory = "../output";
+
+    // Directory to store the results of this simulation
+    std::string output_directory = base_directory + "/NS_Simulation/";
+
+    // Ensure the output directory is created (if it doesn't exist)
+    if (!std::filesystem::exists(output_directory))
+    {
+        std::filesystem::create_directory(output_directory);
+    }
+
+    DataOut<dim> data_out;
+
+    data_out.attach_dof_handler(NS_dof_handler);
+
     std::vector<std::string> solution_names(dim, "velocity");
     solution_names.push_back("pressure");
 
-    std::vector<DataComponentInterpretation::DataComponentInterpretation>
-    data_component_interpretation(
-        dim, DataComponentInterpretation::component_is_part_of_vector);
-    data_component_interpretation.push_back(
-    DataComponentInterpretation::component_is_scalar);
-
-    DataOut<dim> data_out;                                               //This class is the main class to provide output of data described by finite element fields defined on a collection of cells.
-    data_out.attach_dof_handler(dof_handler);
+    std::vector<DataComponentInterpretation::DataComponentInterpretation> data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
+    data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);                                              
     // vector to be output must be ghosted
-    data_out.add_data_vector(present_solution,
+    data_out.add_data_vector(NS_solution,
                             solution_names,
                             DataOut<dim>::type_dof_data,
                             data_component_interpretation);
 
-    // Partition
+
     Vector<float> subdomain(triangulation.n_active_cells());
     for (unsigned int i = 0; i < subdomain.size(); ++i)
-    {
-        subdomain(i) = triangulation.locally_owned_subdomain();           //For distributed parallel triangulations this function returns the subdomain id of those cells that are owned by the current processor
-    }
+        subdomain(i) = triangulation.locally_owned_subdomain();
+
     data_out.add_data_vector(subdomain, "subdomain");
+    data_out.build_patches();
 
-    data_out.build_patches(degree + 1);
+    data_out.write_vtu_with_pvtu_record(output_directory, "solution", cycle, mpi_communicator, 2, 1);
 
-    std::string basename =
-    "navierstokes" + Utilities::int_to_string(output_index, 6) + "-";
 
-    std::string filename =
-    basename +
-    Utilities::int_to_string(triangulation.locally_owned_subdomain(), 4) +
-    ".vtu";
+    Vector<float> subdomain(triangulation.n_active_cells());
+    for (unsigned int i = 0; i < subdomain.size(); ++i)
+        subdomain(i) = triangulation.locally_owned_subdomain();
 
-    std::ofstream output(filename);
-    data_out.write_vtu(output);
+    data_out.add_data_vector(subdomain, "subdomain");
+    data_out.build_patches();
 
-    static std::vector<std::pair<double, std::string>> times_and_names;
-    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-    {
-        for (unsigned int i = 0;
-            i < Utilities::MPI::n_mpi_processes(mpi_communicator);
-            ++i)
-        {
-            times_and_names.push_back(
-            {time.current(),
-            basename + Utilities::int_to_string(i, 4) + ".vtu"});
-        }
-        std::ofstream pvd_output("navierstokes.pvd");
-        DataOutBase::write_pvd_record(pvd_output, times_and_names);
-    }
+    data_out.write_vtu_with_pvtu_record(output_directory, "solution", cycle, mpi_communicator, 2, 1);
+
+
+
+
+    // TimerOutput::Scope timer_section(timer, "Output results");
+    // pcout << "Writing results..." << std::endl;
+    // std::vector<std::string> solution_names(dim, "velocity");
+    // solution_names.push_back("pressure");
+
+    // std::vector<DataComponentInterpretation::DataComponentInterpretation>
+    // data_component_interpretation(
+    //     dim, DataComponentInterpretation::component_is_part_of_vector);
+    // data_component_interpretation.push_back(
+    // DataComponentInterpretation::component_is_scalar);
+
+    // DataOut<dim> data_out;                                               //This class is the main class to provide output of data described by finite element fields defined on a collection of cells.
+    // data_out.attach_dof_handler(dof_handler);
+    // // vector to be output must be ghosted
+    // data_out.add_data_vector(present_solution,
+    //                         solution_names,
+    //                         DataOut<dim>::type_dof_data,
+    //                         data_component_interpretation);
+
+    // // Partition
+    // Vector<float> subdomain(triangulation.n_active_cells());
+    // for (unsigned int i = 0; i < subdomain.size(); ++i)
+    // {
+    //     subdomain(i) = triangulation.locally_owned_subdomain();           //For distributed parallel triangulations this function returns the subdomain id of those cells that are owned by the current processor
+    // }
+    // data_out.add_data_vector(subdomain, "subdomain");
+
+    // data_out.build_patches(degree + 1);
+
+    // std::string basename =
+    // "navierstokes" + Utilities::int_to_string(output_index, 6) + "-";
+
+    // std::string filename =
+    // basename +
+    // Utilities::int_to_string(triangulation.locally_owned_subdomain(), 4) +
+    // ".vtu";
+
+    // std::ofstream output(filename);
+    // data_out.write_vtu(output);
+
+    // static std::vector<std::pair<double, std::string>> times_and_names;
+    // if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+    // {
+    //     for (unsigned int i = 0;
+    //         i < Utilities::MPI::n_mpi_processes(mpi_communicator);
+    //         ++i)
+    //     {
+    //         times_and_names.push_back(
+    //         {time.current(),
+    //         basename + Utilities::int_to_string(i, 4) + ".vtu"});
+    //     }
+    //     std::ofstream pvd_output("navierstokes.pvd");
+    //     DataOutBase::write_pvd_record(pvd_output, times_and_names);
+    // }
 }
 
