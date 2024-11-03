@@ -1,40 +1,57 @@
 PACS project A.Y 2023/2024, Politecnico di Milano
 
-Supervisors: Carlo De Falco - Giuseppe Caliò
+Supervisors: Carlo De Falco - Paolo Barbante - Lorenzo Valdettaro
 Students: Tommaso Andena - Giacomo Bottacini
 
 
 ######################### Directory Scheme:
 
-- src/
-
-    - main.cpp               
-    - config_reader.cpp
-
-- include/
-
-    - BlockSchurPreconditioner.hpp             // NS simulation code
-    - BlockSchurPreconditioner_impl.hpp        // NS simulation code  
-    - comp_impl
-    - comp
-    - Time.hpp                                 // NS simulation code
-    - BoundaryValues.hpp                       // NS simulation code
-    - CollectorGeometryNS                      // NS and DD simulation code (magari cambia nome)
-    - data_struct.hpp                          // custom struct that store the user data
-    - config_reader.hpp                        // translate .json user inputs into a struct 
-    - json.hpp                                 // just him the one the only  
-
-- config/
-
-    - configuration.json                       // user interface, file used to specify all the parameters
-
-- output/                                      // where the simulation results are stored   
-
-
-- meshes/                                      // where the user saves its own meshes
-
-- CMakeLists.txt
-- README            
+IPROP_project/
+├── CoupledProblem/
+│   ├── config/
+│   │   └── configuration.json
+│   ├── include/
+│   │   ├── BlockSchurPreconditioner.hpp
+│   │   ├── BlockSchurPreconditioner_impl.hpp
+│   │   ├── CollectorGeometry.hpp
+│   │   ├── config_reader.hpp
+│   │   ├── data_struct.hpp
+│   │   ├── BoundaryValues.hpp
+│   │   ├── json.hpp
+│   │   ├── CompleteProblem.hpp
+│   │   └── CompleteProblem_impl.hpp
+│   ├── src/
+│   │   ├── main.cpp
+│   │   └── config_reader.cpp
+│   ├── output/
+│   └── CMakeLists.txt
+├── PNjunction
+│   ├── include/
+│   │   ├── DriftDiffusion.hpp
+│   │   ├── DriftDiffusion_impl.hpp
+│   │   ├── Electrical_Constants.hpp
+│   │   ├── Electrical_Values.hpp
+│   │   └── Electrical_Values_impl.hpp
+│   ├── src/
+│   │   └── 2d.cc
+│   ├── output/
+│   └── CMakeLists.txt
+├── TimeDependentNS
+│   ├── include/
+│   │   ├── BlockSchurPreconditioner.hpp
+│   │   ├── BlockSchurPreconditioner_impl.hpp
+│   │   ├── BoundaryValues.hpp
+│   │   ├── InsIMEX.hpp
+│   │   ├── InsIMEX_impl.hpp
+│   │   └── Time.hpp
+│   ├── src/
+│   │   └── time_dependent_NS.cc
+│   ├── output/
+│   └── CMakeLists.txt
+├── meshes/
+├── README
+└── .gitignore
+      
 
 ######################### How to run the code:
 
@@ -64,30 +81,3 @@ make custom_clean
 
 the user has only to change configuration.json in order to module its own personal simulation. In order to understand all the entries,
 we recall that you CANNOT comment a .json file, look at data_struct. All the entries are pretty verbose, moreover you can choose the simulation to perform from the ID_simulation item.
-
-
-
-
-ROBA DA FARE E DA TENERE A MENTE:
-
-non tutti i dati passati nel json sono usati nel codice (vedi le tolleranze di NS che non le ho torvate al primo giro), quindi bisogna modulare questa cosa. Poi, i dati che sono nel .json sicuramente non sono esaustivi e non danno una modularita a 360 gradi, andranno aggiunte altre voci, in particolare vedo dura parametrizzare al 100% la costruzione della mesh
-
-ponderare la scelta di screare un'altra struct per le BCS dentro a data_struct (per adesso non sono state toccate, sono quelle classiche)
-
-se l'utente mette dei dati pazzi non c'è qualcosa che lo fermi, soprattutto per quanto riguarda la mesh (Exception handling)
-
-problema nomi cartelle se faccio più e più simmulazioni, l'utente vorrebbe farlo?? c'è un modo per contare ol numero di run una volta compilato il codice ? --> fare un file.txt contatore che tiene in mente quante run sono state effettuate ?
-in teoria l'utente non vorrebbe fare solo le simulazioni 1 2 3 del naca?
-
-sistemare collectorGeometryNS per le simulazioni. penso che i risultati sballati siano legati al fatto che cambiamo la geometria e lui non se ne accorge
-
-
-
-Ad oggi il codice fa più simulazioni in base al raggio dell'emettitore, si può cambiare questa feature in modo "rigido"
-
-
-LEGGI QUA PER COSE DA FARE SUL CODICE COMPLETO:
-
-questa è la versione che runna su geometrie grandi ma che da risultati sballati, bisogna:
-mettere la geometria "piccola" vedi download del pc
-sfruttare homo poisson per inizializzare il potenziale e far convergere newton
