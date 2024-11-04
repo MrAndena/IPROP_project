@@ -3,7 +3,7 @@
 
 template <int dim>
 InsIMEX<dim>::InsIMEX(parallel::distributed::Triangulation<dim> &tria)
-    : viscosity(1.8e-5),
+    : viscosity(0.01),
     gamma(0.1),                             //Coefficient of the Grad-div stabilization
     degree(1),
     triangulation(tria),
@@ -22,15 +22,15 @@ InsIMEX<dim>::InsIMEX(parallel::distributed::Triangulation<dim> &tria)
 template <int dim>
 void InsIMEX<dim>::setup_dofs()
 {
-    // The first step is to associate DoFs with a given mesh.
-    dof_handler.distribute_dofs(fe);     //Distribute the dof needed for the given fe on the triangulation that i passed in the constructor   // We renumber the components to have all velocity DoFs come before
-    // the pressure DoFs to be able to split the solution vector in two blocks
-    // which are separately accessed in the block preconditioner.
+    // Associate degrees of freedom (DoFs) with the mesh.
+    dof_handler.distribute_dofs(fe);    
     DoFRenumbering::Cuthill_McKee(dof_handler);                      //Renumber the degrees of freedom according to the Cuthill-McKee method.
+
     std::vector<unsigned int> block_component(dim + 1, 0);           //Musk for the reording       //Block: in our case are two, one with dimension = dim and one with dimension = 1
     block_component[dim] = 1;
     DoFRenumbering::component_wise(dof_handler, block_component);    //We want to sort degree of freedom for a NS discretization so that we first get all velocities and then all the pressures so that the resulting matrix naturally decomposes into a 2×2 system.
     dofs_per_block = DoFTools::count_dofs_per_fe_block(dof_handler, block_component); //Returns a vector (of dim=2) of types::global_dof_index  
+    
     // Partitioning.
     unsigned int dof_u = dofs_per_block[0];
     unsigned int dof_p = dofs_per_block[1];
@@ -54,15 +54,13 @@ void InsIMEX<dim>::setup_dofs()
 template <int dim>
 void InsIMEX<dim>::make_constraints_init()
 {
-    // Because the equation is written in incremental form, two constraints are needed: nonzero constraint and zero constraint.
+    // Because the equation is written in incremental form, two constraints are needed: initial constraints and update constraints.
     
     initial_NS_constraints.clear();    //clear() the AffineConstraints object and supply an IndexSet with lines that may be constrained
     initial_NS_constraints.reinit(locally_relevant_dofs);      
     // DoFTools::make_hanging_node_constraints(dof_handler, nonzero_NS_constraints);      //Necessary when work with not homogeneous meshes (mesh non conformi) since in this cases we have the presence of hanging nodes. We have to impose constraints also on these.
     // DoFTools::make_hanging_node_constraints(dof_handler, zero_NS_constraints);
 
-    // Apply Dirichlet boundary conditions on all boundaries except for the outlet.
-    
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar vertical_velocity(1);
     const FEValuesExtractors::Vector vertical_velocity_and_pressure(1);    
@@ -70,7 +68,7 @@ void InsIMEX<dim>::make_constraints_init()
     //Nonzero_NS_constraints //Assign B.C. different from zero in nonzero_constraints
     VectorTools::interpolate_boundary_values(dof_handler,                           
                                             0,                                      // Up and down 
-                                            Functions::ZeroFunction<dim>(dim+1),    // For each degree of freedom at the boundary, its boundary value will be overwritten if its index already exists in boundary_values. Otherwise, a new entry with proper index and boundary value for this degree of freedom will be inserted into boundary_values.
+                                            Functions::ZeroFunction<dim>(dim+1),    
                                             initial_NS_constraints,
                                             fe.component_mask(vertical_velocity));
     VectorTools::interpolate_boundary_values(dof_handler,
@@ -102,15 +100,11 @@ void InsIMEX<dim>::make_constraints_init()
 
 
 template <int dim>
-void InsIMEX<dim>::make_constraints_update(double time_step)    //In input chiediamo il time step per essere più generali volendo ad esempio cambiare l'incremento nel tempo
+void InsIMEX<dim>::make_constraints_update()   
 {
-    // Because the equation is written in incremental form, two constraints are needed: nonzero constraint and zero constraint.
     
-    update_NS_constraints.clear();                  //clear() the AffineConstraints object and supply an IndexSet with lines that may be constrained
+    update_NS_constraints.clear();                 
     update_NS_constraints.reinit(locally_relevant_dofs);
-
-    // Apply Dirichlet boundary conditions on all boundaries except for the
-    // outlet.
     
     const FEValuesExtractors::Vector velocities(0);
     const FEValuesExtractors::Scalar vertical_velocity(1);
@@ -164,7 +158,7 @@ void InsIMEX<dim>::initialize_system()
     sparsity_pattern.copy_from(dsp);                                            //Copy data from an object of type BlockDynamicSparsityPattern
     SparsityTools::distribute_sparsity_pattern(                    //Communicate rows in a dynamic sparsity pattern over MPI.
         dsp,                                                       //A dynamic sparsity pattern that has been built locally and for which we need to exchange entries with other processors to make sure that each processor knows all the elements of the rows of a matrix it stores and that may eventually be written to. This sparsity pattern will be changed as a result of this function: All entries in rows that belong to a different processor are sent to them and added there.
-        dof_handler.locally_owned_dofs(),                          //An IndexSet describing the rows owned by the calling MPI process. 
+        dof_handler.locally_owned_dofs(),                          
         mpi_communicator,
         locally_relevant_dofs);                                    //The range of elements stored on the local MPI process. Only rows contained in this set are checked in dsp for transfer
 
@@ -179,7 +173,6 @@ void InsIMEX<dim>::initialize_system()
     mass_schur.reinit(owned_partitioning, schur_dsp, mpi_communicator);       //We want to reinitialize our matrix with new partitions of data
 
     // present_solution is ghosted because it is used in the output and mesh refinement functions.
-    // Un vettore ghosted è un vettore che contiene dati locali nella partizione di memoria di un processo MPI, ma include anche una zona "spettrale" (ghost zone) che contiene porzioni dei dati che appartengono a altri processi. Questo è utile perché consente agli algoritmi di comunicare le informazioni necessarie tra i processi MPI senza richiedere una comunicazione esplicita.
     present_solution.reinit(owned_partitioning, relevant_partitioning, mpi_communicator);      
     // solution_increment is non-ghosted (so doesn't contain info of "ghost zone") because the linear solver needs a completely distributed vector.
     solution_increment.reinit(owned_partitioning, mpi_communicator);   
@@ -194,10 +187,6 @@ void InsIMEX<dim>::initialize_system()
 // It can be used to assemble the entire system or only the RHS.
 // An additional option is added to determine whether nonzero
 // constraints or zero constraints should be used.
-// Note that we only need to assemble the LHS for twice: once with the nonzero
-// constraint
-// and once for zero constraint. But we must assemble the RHS at every time
-// step.
 template <int dim>
 void InsIMEX<dim>::assemble(bool use_initial_constraints,
                             bool assemble_system)
@@ -211,6 +200,7 @@ void InsIMEX<dim>::assemble(bool use_initial_constraints,
     }
     system_rhs = 0;
 
+    // Setup FEValues for cell integration with quadrature points
     FEValues<dim> fe_values(fe,                              //FEValues contains finite element evaluated in quadrature points of a cell.                            
                             volume_quad_formula,             //It implicitely uses a Q1 mapping
                             update_values | update_quadrature_points |
@@ -322,9 +312,9 @@ void InsIMEX<dim>::assemble(bool use_initial_constraints,
             use_initial_constraints ? initial_NS_constraints : update_NS_constraints;
             if (assemble_system)
             {
-                constraints_used.distribute_local_to_global(local_matrix,             //In practice this function implements a scatter operation
+                constraints_used.distribute_local_to_global(local_matrix,             
                                                             local_rhs,
-                                                            local_dof_indices,        //Contains the corresponding global indexes
+                                                            local_dof_indices,        
                                                             system_matrix,
                                                             system_rhs);
                 constraints_used.distribute_local_to_global(
@@ -350,10 +340,6 @@ void InsIMEX<dim>::assemble(bool use_initial_constraints,
 
 
 // Solve the linear system using BICG solver with block preconditioner.
-// After solving the linear system, the same AffineConstraints object as used
-// in assembly must be used again, to set the constrained value.
-// The second argument is used to determine whether the block
-// preconditioner should be reset or not.
 template <int dim>
 std::pair<unsigned int, double>
 InsIMEX<dim>::solve(bool use_initial_constraints, bool assemble_system, double time_step)
@@ -372,7 +358,7 @@ InsIMEX<dim>::solve(bool use_initial_constraints, bool assemble_system, double t
     
     double coeff = 0.0 ;   // Adaptive tolerance coefficient to have a more precise solution in the initial steps
     if (time_step < 4) {
-        coeff = 1e-5;
+        coeff = 1e-4;
     } else if (time_step >= 4 && time_step < 10) {
         coeff = 1e-3;
     } else {
@@ -437,15 +423,12 @@ void InsIMEX<dim>::run()
 
         // Resetting
         solution_increment = 0;
-        // Only use nonzero constraints at the very first time step (Così i valori nei constraints non vengono modificati)
+
         bool apply_initial_constraints = false;
         
-        // We have to assemble the LHS for the initial two time steps:
-        // once using nonzero_constraints, once using zero_constraints.
         bool assemble_system = true;
-        // bool assemble_system = true;
 
-        make_constraints_update(time.get_timestep());
+        make_constraints_update();
 
         assemble(apply_initial_constraints, assemble_system);
 
@@ -490,7 +473,7 @@ void InsIMEX<dim>::output_results(const unsigned int output_index) const
 
     DataOut<dim> data_out;
 
-    data_out.attach_dof_handler(NS_dof_handler);
+    data_out.attach_dof_handler(dof_handler);
 
     std::vector<std::string> solution_names(dim, "velocity");
     solution_names.push_back("pressure");
@@ -498,7 +481,7 @@ void InsIMEX<dim>::output_results(const unsigned int output_index) const
     std::vector<DataComponentInterpretation::DataComponentInterpretation> data_component_interpretation(dim, DataComponentInterpretation::component_is_part_of_vector);
     data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);                                              
     // vector to be output must be ghosted
-    data_out.add_data_vector(NS_solution,
+    data_out.add_data_vector(present_solution,
                             solution_names,
                             DataOut<dim>::type_dof_data,
                             data_component_interpretation);
@@ -511,74 +494,8 @@ void InsIMEX<dim>::output_results(const unsigned int output_index) const
     data_out.add_data_vector(subdomain, "subdomain");
     data_out.build_patches();
 
-    data_out.write_vtu_with_pvtu_record(output_directory, "solution", cycle, mpi_communicator, 2, 1);
+    data_out.write_vtu_with_pvtu_record(output_directory, "solution", output_index, mpi_communicator, 2, 1);
 
 
-    Vector<float> subdomain(triangulation.n_active_cells());
-    for (unsigned int i = 0; i < subdomain.size(); ++i)
-        subdomain(i) = triangulation.locally_owned_subdomain();
-
-    data_out.add_data_vector(subdomain, "subdomain");
-    data_out.build_patches();
-
-    data_out.write_vtu_with_pvtu_record(output_directory, "solution", cycle, mpi_communicator, 2, 1);
-
-
-
-
-    // TimerOutput::Scope timer_section(timer, "Output results");
-    // pcout << "Writing results..." << std::endl;
-    // std::vector<std::string> solution_names(dim, "velocity");
-    // solution_names.push_back("pressure");
-
-    // std::vector<DataComponentInterpretation::DataComponentInterpretation>
-    // data_component_interpretation(
-    //     dim, DataComponentInterpretation::component_is_part_of_vector);
-    // data_component_interpretation.push_back(
-    // DataComponentInterpretation::component_is_scalar);
-
-    // DataOut<dim> data_out;                                               //This class is the main class to provide output of data described by finite element fields defined on a collection of cells.
-    // data_out.attach_dof_handler(dof_handler);
-    // // vector to be output must be ghosted
-    // data_out.add_data_vector(present_solution,
-    //                         solution_names,
-    //                         DataOut<dim>::type_dof_data,
-    //                         data_component_interpretation);
-
-    // // Partition
-    // Vector<float> subdomain(triangulation.n_active_cells());
-    // for (unsigned int i = 0; i < subdomain.size(); ++i)
-    // {
-    //     subdomain(i) = triangulation.locally_owned_subdomain();           //For distributed parallel triangulations this function returns the subdomain id of those cells that are owned by the current processor
-    // }
-    // data_out.add_data_vector(subdomain, "subdomain");
-
-    // data_out.build_patches(degree + 1);
-
-    // std::string basename =
-    // "navierstokes" + Utilities::int_to_string(output_index, 6) + "-";
-
-    // std::string filename =
-    // basename +
-    // Utilities::int_to_string(triangulation.locally_owned_subdomain(), 4) +
-    // ".vtu";
-
-    // std::ofstream output(filename);
-    // data_out.write_vtu(output);
-
-    // static std::vector<std::pair<double, std::string>> times_and_names;
-    // if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-    // {
-    //     for (unsigned int i = 0;
-    //         i < Utilities::MPI::n_mpi_processes(mpi_communicator);
-    //         ++i)
-    //     {
-    //         times_and_names.push_back(
-    //         {time.current(),
-    //         basename + Utilities::int_to_string(i, 4) + ".vtu"});
-    //     }
-    //     std::ofstream pvd_output("navierstokes.pvd");
-    //     DataOutBase::write_pvd_record(pvd_output, times_and_names);
-    // }
 }
 

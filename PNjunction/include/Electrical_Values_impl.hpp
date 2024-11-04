@@ -27,7 +27,6 @@ double DopingValues<dim>::value(const Point<dim> & p, const unsigned int compone
 template <int dim>
 double PotentialValues<dim>::value(const Point<dim> & p, const unsigned int component) const{
     
-  // these 3 lines are identical to the first template, same reasoning
   (void)component;
   AssertIndexRange(component, 1);
   Assert(dim == 2, ExcNotImplemented());
@@ -46,7 +45,6 @@ double PotentialValues<dim>::value(const Point<dim> & p, const unsigned int comp
 template <int dim>
 double ElectronInitialValues<dim>::value(const Point<dim> & p, const unsigned int component) const{
     
-  // These 3 lines are identical to the first template, same resoning
   (void)component;
   AssertIndexRange(component, 1);
   Assert(dim == 2, ExcNotImplemented());
@@ -64,8 +62,7 @@ double ElectronInitialValues<dim>::value(const Point<dim> & p, const unsigned in
 
 template <int dim>
 double HoleInitialValues<dim>::value(const Point<dim> & p, const unsigned int component) const {
-    
-  // These 3 lines are identical to the first
+
   (void)component;
   AssertIndexRange(component, 1);
   Assert(dim == 2, ExcNotImplemented());

@@ -57,24 +57,18 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <filesystem>
 
 #include "BlockSchurPreconditioner.hpp"
 #include "Time.hpp"
 #include "BoundaryValues.hpp"
 
 // The incompressible Navier-Stokes solver
-  //
-  // Parallel incompressible Navier Stokes equation solver using
-  // implicit-explicit time scheme.
-  // The system equation is written in the incremental form, and we treat
-  // the convection term explicitly.
-  // The system is further stablized and preconditioned with Grad-Div method,
-  // where GMRES solver is used as the outer solver.
 template <int dim>
 class InsIMEX
 {
 public:
-  InsIMEX(parallel::distributed::Triangulation<dim> &tria);              //We deserve a parallel::DIstributedTriangulation so our mesh must be in this class or similar to parallelize it
+  InsIMEX(parallel::distributed::Triangulation<dim> &tria);              //We deserve a parallel::DistributedTriangulation so our mesh must be in this class or similar to parallelize it
   void run();
   ~InsIMEX() { timer.print_summary(); }
 
@@ -82,7 +76,7 @@ private:
   void setup_dofs();
 
   void make_constraints_init();
-  void make_constraints_update(double time_step);
+  void make_constraints_update();
 
   void initialize_system();
   void assemble(bool use_nonzero_constraints, bool assemble_system);
