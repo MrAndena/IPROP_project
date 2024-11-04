@@ -1,8 +1,7 @@
 {
   "fluid_parameters": {
     "viscosity": 1.8e-5,
-    "gamma":1.0,
-    "p_over_rho":0.0
+    "gamma":1.0
   },
   "electrical_parameters": {
     "eps_0": 8.854e-12,
@@ -16,11 +15,11 @@
     "N_ref": 1.0e+14,
     "N_min":1.0e+9,
     "Mm": 29.0e-3,
-    "Avo": 6.022e+23,
     "Ve":2e+4
   },
   "geometrical_parameters": {
-
+    "emitter_center_X":0.0,
+    "emitter_center_Y":0.0,
      "NACA": {
         "chord_length": 1,
         "naca_digits": 12,

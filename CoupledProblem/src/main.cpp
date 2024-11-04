@@ -13,13 +13,7 @@ int main(int argc, char** argv){
     // Define an empty data structure to hold the simulation input parameters.
     data_struct my_data; 
 
-    std::cout<<"   Reading JSON file inputs ...";
-
-    // Call the `reader` function to populate `my_data` with values from the input JSON file.
-    // This structure is available to all processors, ensuring consistent input across ranks.
-    reader(my_data); 
-
-    std::cout<<"   Done !"<<std::endl;
+    reader(my_data); //all the processor know my_data, struct that contains all the user specification
 
 
 //#################### - Code for the simulation - ##########################################################################################

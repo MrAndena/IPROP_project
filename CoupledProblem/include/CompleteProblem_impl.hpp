@@ -304,14 +304,17 @@ void CompleteProblem<dim>::setup_drift_diffusion()
   const double E_ref = m_data.electrical_parameters.E_ref;
   const double N_ref = m_data.electrical_parameters.N_ref;
   const double N_min = m_data.electrical_parameters.N_min;
+  const double Cx = m_data.geometrical_parameters.emitter_center_X;
+  const double Cy = m_data.geometrical_parameters.emitter_center_Y;
+
 
   // Set up boundary condition for ion density based on potential field gradient
   Functions::FEFieldFunction<dim, dealii::PETScWrappers::MPI::Vector> solution_as_function_object(dof_handler, potential, mapping);
 
   // Map strings to cases for handling different geometries (NACA, WW, CYL)
   std::unordered_map<std::string, int> stringToCase{
-    {"NACA", 1},
-    {"WW", 2},
+    {"NACA",1},
+    {"WW",  2},
     {"CYL", 3}
     };
 
@@ -322,7 +325,7 @@ void CompleteProblem<dim>::setup_drift_diffusion()
   auto boundary_evaluator = [&] (const Point<dim> &p) //lambda function
   {
 
-    Point<dim> center(0.0,0.0);
+    Point<dim> center(Cx,Cy);
     Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
     Tensor<1,dim> normal = get_emitter_normal(p,center);
 
@@ -339,26 +342,6 @@ void CompleteProblem<dim>::setup_drift_diffusion()
 
   };
 
-//?????????????????????????????????????????????????????????????????????????????????????????????????
-
-  // Lambda function for emitter boundary ion density with a different center position
-  auto boundary_evaluator_emitter = [&] (const Point<dim> &p) //lambda function
-  {
-
-    Point<dim> center(-0.0253,0.0);
-    Tensor<1,dim> grad_U = solution_as_function_object.gradient(p);
-    Tensor<1,dim> normal = get_emitter_normal(p,center);
-
-    const double En = grad_U*normal;
-
-    const double EXP = std::exp((-En-E_ON)/E_ref); 
-
-    const double value =  N_ref * EXP; 
-
-    const double n = std::max(N_min, value);
-
-    return n;
-  };
 
   // Set the initial ambient ion density based on stratosphere condition
   const double N_0 = m_data.electrical_parameters.stratosphere ? 2.2e-3 : 0.5e-3; // [m^-3] ambient ion density 
@@ -380,7 +363,7 @@ void CompleteProblem<dim>::setup_drift_diffusion()
 
           case 2:{// WW case
 
-              VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator_emitter), ion_constraints);    // Emitter
+              VectorTools::interpolate_boundary_values(dof_handler,3, ScalarFunctionFromFunctionObject<dim>(boundary_evaluator), ion_constraints);    // Emitter
               VectorTools::interpolate_boundary_values(dof_handler,4, Functions::ConstantFunction<dim>(1e9), ion_constraints);  // Collector
               VectorTools::interpolate_boundary_values(dof_handler, 1, Functions::ConstantFunction<dim>(N_0), ion_constraints);   // Inlet
 
@@ -1364,7 +1347,7 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
   
   TimerOutput::Scope timer_section(timer, "Assemble system");        //Enter the given section in the timer
 
-  if (assemble_system)           
+  if (assemble_system)  {      
       NS_system_matrix = 0;
       NS_mass_matrix = 0;
   }
@@ -1853,7 +1836,7 @@ void CompleteProblem<dim>::run()
     previous_density = old_ion_density;
     previous_density -= ion_density;
     
-    time_err = previous_density.linfty_norm()/old_ion_density.linfty_norm();
+    double time_err = previous_density.linfty_norm()/old_ion_density.linfty_norm();
     pcout << "   Density change from previous time-step is: " << time_err << std::endl;
 
     old_ion_density = ion_density;
