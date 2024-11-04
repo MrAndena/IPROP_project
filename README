@@ -50,34 +50,26 @@ IPROP_project/
 │   └── CMakeLists.txt
 ├── meshes/
 ├── README
+├── PACS_report.PDF
 └── .gitignore
       
 
 ######################### How to run the code:
 
-enter in the directory of the project, from you terminal type:
-(NB: you need deal.ii and gmsh)
+We suggest to read our report in order to have a wider idea on how to run the code
 
-mkdir build
-cd build
-cmake ..
-make
-mpiexec -n num_proc ./executable_name
+Modify the FIND_PACKAGE related to the desired simulation in the CMakeLists.txt fiel
+# Deal.ii
+FIND_PACKAGE(deal.II 9.5.1
+    HINTS /opt/mox/mk/toolchains/gcc-glibc/11.2.0/pkgs/dealii/9.5.1
+)
 
-NB:
-In the CMakeLists.txt file is specified the executable of gmsh, the code look in the usual directory for this executable location (/usr/bin , /usr/local/bin ecc). If the executable is saved in a non-standard direcotry please compile:
+Then:
+enter in the directory of the case, from you terminal type:
 
-cmake -DGMSH_EXECUTABLE=/my/personal/path/to/gmsh ..
+$mkdir build
+$cd build
+$cmake ..
+$make
+$mpiexec -n <num_proc> ./executable_name
 
-in the cmake step (third). Per deal.ii come funziona?
-
-######################### Commands:
-
-to delete ALL the meshes, the results of ALL the simulation and the build directory use the command:
-
-make custom_clean
-
-######################### JSON file description 
-
-the user has only to change configuration.json in order to module its own personal simulation. In order to understand all the entries,
-we recall that you CANNOT comment a .json file, look at data_struct. All the entries are pretty verbose, moreover you can choose the simulation to perform from the ID_simulation item.

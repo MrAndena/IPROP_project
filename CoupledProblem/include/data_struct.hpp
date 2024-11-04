@@ -4,30 +4,30 @@
 #include<string>
 // Fluid Physical Parameters Struct
 
-struct FluidParameters {
+    struct FluidParameters {
 
-    double viscosity;     // viscosity of the fluid 
-    double gamma;         // stabilizaton parameter in NS
+        double viscosity;     // viscosity of the fluid 
+        double gamma;         // stabilizaton parameter in NS
 
-};
+    };
 
-// Electrical Physical Parameters Struct
-struct ElectricalParameters { 
+    // Electrical Physical Parameters Struct
+    struct ElectricalParameters { 
 
-    double eps_0;    //permittivity of free space [F/m]= [C^2 s^2 / kg / m^3]
-    double eps_r;    //permittivity [F/m]= [C^2 s^2 / kg / m^3]
-    double q0;       //unit charge [C]
-    double kB;       //Boltzman constant[J/K]
-    double mu0;      //Mobility of ions
-    bool stratosphere; //bool, if false use atmospheric 0 km condition
-    double E_ON;     // onset field threshold [V/m]
-    double E_ref;    // maximum field value   [V/m]
-    double N_ref;    // maximum density value [m^-3]
-    double N_min;    
-    double Mm;       // average air molar mass [kg m^-3]
-    double Ve;       // emitter voltage [V]
+        double eps_0;    //permittivity of free space [F/m]= [C^2 s^2 / kg / m^3]
+        double eps_r;    //permittivity [F/m]= [C^2 s^2 / kg / m^3]
+        double q0;       //unit charge [C]
+        double kB;       //Boltzman constant[J/K]
+        double mu0;      //Mobility of ions
+        bool stratosphere; //bool, if false use atmospheric 0 km condition
+        double E_ON;     // onset field threshold [V/m]
+        double E_ref;    // maximum field value   [V/m]
+        double N_ref;    // maximum density value [m^-3]
+        double N_min;    
+        double Mm;       // average air molar mass [kg m^-3]
+        double Ve;       // emitter voltage [V]
 
-};
+    };
 
 
 // -- Geometrical infos Struct --

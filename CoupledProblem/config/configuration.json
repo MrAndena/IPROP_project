@@ -48,3 +48,14 @@
   
   }
 }
+
+
+
+\section{Further Improvements and Conclusion}
+In this report, we have detailed the implementation of our specialized code designed to perform numerical simulations of a coupled problem between fluid dynamics and electrical phenomena. Through a systematic approach, we explained the mathematical model, its numerical discretization, our implementation and finally how to download and use our scripts. We also stressed about the objectives achieved and also those left incomplete. We conclude the report with the possible further improvements for the IPROP project:
+\begin{enumerate}
+    \item Extension to 3D case
+    \item Inclusion of an adaptive grid refinement algorithm
+    \item Adapt the coupled algorithm to perform simulations on different geometry
+    \item Compute physical quantities of interest such as the ion thrust expectation
+\end{enumerate}
