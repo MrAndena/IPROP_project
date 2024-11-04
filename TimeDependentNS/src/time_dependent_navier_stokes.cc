@@ -149,8 +149,8 @@ Point<dim-1>  CollectorGeometry<dim>::pull_back(const Point<dim> &p) const      
 
  void create_triangulation(parallel::distributed::Triangulation<2> &tria)
 { 
-  // const std::string filename = "../../meshes/coarse_WW.msh";
-  const std::string filename = "../../meshes/structured_naca_2.msh";
+  const std::string filename = "../../meshes/coarse_WW.msh";
+  // const std::string filename = "../../meshes/structured_naca_2.msh";
   
   ConditionalOStream pcout(std::cout, (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0));
 
@@ -163,24 +163,25 @@ Point<dim-1>  CollectorGeometry<dim>::pull_back(const Point<dim> &p) const      
   const types::manifold_id emitter = 1;                   //The type used to denote manifold indicators associated with every object of the mesh
 
   // FOR WIRE WIRE SIMULATION
-  // double r_col = 1e-3;
-  // double r_emi = 30e-5;
-  // double dist_emi_col = 0.025;
-  // const double X = -r_emi-dist_emi_col;
+  double r_col = 1e-3;
+  double r_emi = 30e-5;
+  double dist_emi_col = 0.025;
+  const double X = -r_emi-dist_emi_col;
 
   // FOR NACA SIMULATION
-  double X = -2.53;
+  // double X = -2.53;
 
   const Point<2> center(X,0.0);
   SphericalManifold<2> emitter_manifold(center);
 
   // FOR NACA SIMULATION
-  const types::manifold_id collector = 2;
-  CollectorGeometry<2> collector_manifold; 
+  // const types::manifold_id collector = 2;
+  // CollectorGeometry<2> collector_manifold; 
 
   // FOR WIRE WIRE SIMULATION
-  // const Point<2> center2(r_col,0.0);
-  // SphericalManifold<2> collector_manifold(center2);               
+  const types::manifold_id collector = 2;
+  const Point<2> center2(r_col,0.0);
+  SphericalManifold<2> collector_manifold(center2);               
 
   tria.set_all_manifold_ids_on_boundary(1, emitter);
   tria.set_manifold(emitter, emitter_manifold);

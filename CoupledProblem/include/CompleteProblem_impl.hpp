@@ -458,7 +458,6 @@ void CompleteProblem<dim>::update_ion_boundary_condition(){
   {
     
     const double ion_value = solution_as_function_object_1.value(p);
-    const double old_ion_value = solution_as_function_object_2.value(p);
 
     // Use current ion density value as boundary condition
     const double value = ion_value;
@@ -998,9 +997,6 @@ template <int dim>
 void CompleteProblem<dim>::perform_drift_diffusion_fixed_point_iteration_step() // method used to update ion_density
 {  
 
-  // Fix the constants
-  const double q0 = m_data.electrical_parameters.q0;
-
   // Create a temporary vector to hold the right-hand side values for the linear system
   PETScWrappers::MPI::Vector temp;
   temp.reinit(locally_owned_dofs, mpi_communicator);
@@ -1394,10 +1390,7 @@ void CompleteProblem<dim>::assemble_NS(bool use_nonzero_constraints,
   std::vector<double> phi_p(dofs_per_cell);
 
   Tensor<1,dim> f;   // Force vector
-  
-  // Prepare for handling electrical variables
-  auto ion_cell = dof_handler.begin_active();  
-  const auto ion_endc = dof_handler.end();     
+
   
   const unsigned int ion_dofs_per_cell = 4;    // Number of DoFs for ion cell
   std::vector<types::global_dof_index> ion_local_dof_indices(ion_dofs_per_cell);   // Local DoF indices for ion cell
@@ -1640,24 +1633,6 @@ void CompleteProblem<dim>::solve_navier_stokes()
 	const unsigned int dofs_per_NS_cell = NS_fe.n_dofs_per_cell();
 	std::vector<types::global_dof_index> NS_local_dof_indices(dofs_per_NS_cell);
 
-	auto cell = dof_handler.begin_active();    
-	auto NS_cell = NS_dof_handler.begin_active();
-
-  // Define end iterators for both dof handlers
-	const auto endc = dof_handler.end();
-	const auto NS_endc = NS_dof_handler.end();
-
-	double vel_max = 0.;  
-
-
-  // Initialize min and max DoF values for X, Y, and pressure
-  unsigned int min_dof_x = std::numeric_limits<unsigned int>::max();
-  unsigned int max_dof_x = 0;
-  unsigned int min_dof_y = std::numeric_limits<unsigned int>::max();
-  unsigned int max_dof_y = 0;
-  unsigned int min_dof_p = std::numeric_limits<unsigned int>::max();
-  unsigned int max_dof_p = 0;
-
   // Index vector for accessing specific velocity degrees of freedom
   std::vector<int> index_x = {0, 3, 6, 9};
 
@@ -1774,8 +1749,8 @@ void CompleteProblem<dim>::run()
   // SET ERRORS AND TOLERANCES
   int step_number = 0;   // time evolution step
 
-  const unsigned int max_it = 1e+3;    // Max iterations for Gummel
-  const unsigned int max_steps = 1000;  // Max steps for the time loop
+  const int max_it = 1e+3;    // Max iterations for Gummel
+  const int max_steps = 1000;  // Max steps for the time loop
 
   const double tol = 1.e-9;         // Tolerance for the Newton 
 

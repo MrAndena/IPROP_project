@@ -190,11 +190,12 @@ private:
 
     IndexSet NS_locally_relevant_dofs; //nuovo
 
+    double timestep = 0;
 
     double time_NS = 0;
     double timestep_NS;
+
     mutable TimerOutput timer;
-    double timestep = 0;
     SparsityPattern      sparsity_pattern_poisson;
 };
 
