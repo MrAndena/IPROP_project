@@ -23,7 +23,6 @@ void reader(data_struct& data){
     // Load the physical fluid parameters
     dati_json.at("fluid_parameters").at("viscosity").get_to(data.fluid_parameters.viscosity);
     dati_json.at("fluid_parameters").at("gamma").get_to(data.fluid_parameters.gamma);
-    dati_json.at("fluid_parameters").at("p_over_rho").get_to(data.fluid_parameters.p_over_rho);
 
     // Load the electrical parameters
     dati_json.at("electrical_parameters").at("eps_0").get_to(data.electrical_parameters.eps_0);
@@ -38,10 +37,11 @@ void reader(data_struct& data){
     dati_json.at("electrical_parameters").at("N_ref").get_to(data.electrical_parameters.N_ref);
     dati_json.at("electrical_parameters").at("N_min").get_to(data.electrical_parameters.N_min);
     dati_json.at("electrical_parameters").at("Mm").get_to(data.electrical_parameters.Mm);
-    dati_json.at("electrical_parameters").at("Avo").get_to(data.electrical_parameters.Avo);
     dati_json.at("electrical_parameters").at("Ve").get_to(data.electrical_parameters.Ve);
 
     // Load Geometrical parameters
+    dati_json.at("geometrical_parameters").at("emitter_center_X").get_to(data.geometrical_parameters.emitter_center_X);
+    dati_json.at("geometrical_parameters").at("emitter_center_Y").get_to(data.geometrical_parameters.emitter_center_Y);
 
     //NACA
     dati_json.at("geometrical_parameters").at("NACA").at("chord_length").get_to(data.geometrical_parameters.naca.chord_length);

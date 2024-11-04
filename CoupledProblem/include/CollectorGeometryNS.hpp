@@ -34,10 +34,10 @@
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
 
-#include <deal.II/grid/grid_in.h>                //Aggiunto da me
-#include <deal.II/base/geometry_info.h>          //Aggiunto da me
-#include <deal.II/grid/manifold_lib.h>           // To use manifolds
-#include <deal.II/base/mpi.h>                    //Aggiunto da me 
+#include <deal.II/grid/grid_in.h>                
+#include <deal.II/base/geometry_info.h>          
+#include <deal.II/grid/manifold_lib.h>          
+#include <deal.II/base/mpi.h>                    
 
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>
@@ -161,7 +161,8 @@ Point<dim-1>  CollectorGeometry<dim>::pull_back(const Point<dim> &p) const      
 
 void create_triangulation(parallel::distributed::Triangulation<2> &tria, const data_struct& s_data)
 { 
-   
+  ConditionalOStream pcout(std::cout, (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0));
+
   std::unordered_map<std::string, int> stringToCase{
   {"NACA", 1},   //For the mesh with emitter and NACA as collector
   {"WW", 2},     //For the mesh with emitter and collector that are cylindric
@@ -180,7 +181,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
 
                 std::string filename = "../../meshes/"+name_mesh;
 
-                std::cout <<"   Reading the mesh from " << filename << std::endl;
+                pcout <<"   Reading the mesh from " << filename << std::endl;
 
                 std::ifstream input_file(filename);
                 GridIn<2>       grid_in;
@@ -206,7 +207,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
                 tria.set_all_manifold_ids_on_boundary(4, collector);
                 tria.set_manifold(collector, collector_manifold);
                 
-                std::cout  << "   Active cells: " << tria.n_active_cells() << std::endl;
+                pcout  << "   Active cells: " << tria.n_active_cells() << std::endl;
 
                 break;
             }
@@ -218,7 +219,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
 
                 std::string filename = "../../meshes/"+name_mesh;
 
-                std::cout <<"   Reading the mesh from " << filename << std::endl;
+                pcout <<"   Reading the mesh from " << filename << std::endl;
 
                 std::ifstream input_file(filename);
                 GridIn<2>       grid_in;
@@ -246,7 +247,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
                 tria.set_all_manifold_ids_on_boundary(4, collector);
                 tria.set_manifold(collector, collector_manifold);
                 
-                std::cout  << "   Active cells: " << tria.n_active_cells() << std::endl;
+                pcout  << "   Active cells: " << tria.n_active_cells() << std::endl;
                 break;
             }
 
@@ -256,7 +257,7 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
                 std::string name_mesh = s_data.simulation_specification.mesh_name;
                 std::string filename = "../../meshes/" + name_mesh;
 
-                std::cout << "   Reading the mesh from " << filename << std::endl;
+                pcout<< "   Reading the mesh from " << filename << std::endl;
                 std::ifstream input_file(filename);
 
                 // Attacca e leggi la mesh
@@ -281,14 +282,14 @@ void create_triangulation(parallel::distributed::Triangulation<2> &tria, const d
                 tria.set_all_manifold_ids_on_boundary(4, collector); // Imposta ID per la superficie del collector
                 tria.set_manifold(collector, collector_manifold);    // Associa il manifold del collector
 
-                std::cout << "   Active cells: " << tria.n_active_cells() << std::endl;
+                pcout << "   Active cells: " << tria.n_active_cells() << std::endl;
 
                 break;
             }
 
 
             default:{
-                std::cout << "   This TAG does not exists\n";
+                pcout << "   This TAG does not exists\n";
                 break;
             }
 

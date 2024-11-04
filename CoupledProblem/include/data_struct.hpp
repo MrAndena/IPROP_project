@@ -6,29 +6,26 @@
 
 struct FluidParameters {
 
-    double viscosity;     // viscosity NS
-    double gamma;         // gamma NS
-    double p_over_rho;    // Boundary condition at fluid outlet
+    double viscosity;     // viscosity of the fluid 
+    double gamma;         // stabilizaton parameter in NS
 
 };
 
 // Electrical Physical Parameters Struct
-struct ElectricalParameters { // verificare e finire di scirvere unita misura
+struct ElectricalParameters { 
 
-    double eps_0;    //permittivity of free space[F/m]= [C^2 s^2 / kg / m^3]
-    double eps_r;    //permittivity
+    double eps_0;    //permittivity of free space [F/m]= [C^2 s^2 / kg / m^3]
+    double eps_r;    //permittivity [F/m]= [C^2 s^2 / kg / m^3]
     double q0;       //unit charge [C]
-    double kB;       //[J/K]
-    double mu0;      //Mobility
+    double kB;       //Boltzman constant[J/K]
+    double mu0;      //Mobility of ions
     bool stratosphere; //bool, if false use atmospheric 0 km condition
     double E_ON;     // onset field threshold [V/m]
-    double E_ref;    // maximum field value [V/m]
+    double E_ref;    // maximum field value   [V/m]
     double N_ref;    // maximum density value [m^-3]
-    double N_min;
+    double N_min;    
     double Mm;       // average air molar mass [kg m^-3]
-    double Avo;      // Avogadro's number
     double Ve;       // emitter voltage [V]
-    double theta;
 
 };
 
@@ -40,10 +37,10 @@ struct NACA {
     double chord_length;                   // length of the chord [m]
     int naca_digits;                       // type of naca
     double emitter_radius;                 // radius of the circular emitter [m]
-    double distance_emitter_collector;     // distance circular emitter surface, airfoil collector surface
-    double distance_trailing_edge_outlet;  // distance trailing edge outlet
-    double distance_emitter_inlet;         // distance circular emitter surface and inlet
-    double distance_emitter_up_bottom;     // distance circular emitter surface and up/bottom boundary
+    double distance_emitter_collector;     // distance circular emitter surface, airfoil collector surface [m]
+    double distance_trailing_edge_outlet;  // distance trailing edge outlet [m]
+    double distance_emitter_inlet;         // distance circular emitter surface and inlet [m]
+    double distance_emitter_up_bottom;     // distance circular emitter surface and up/bottom boundary [m]
 
 };
 
@@ -52,10 +49,10 @@ struct WW {
      
     double emitter_radius;                 // radius of the circular emitter [m]
     double collector_radius;               // radius of the circular collector [m]
-    double distance_emitter_collector;     // distance circular emitter surface, airfoil collector surface
-    double distance_collector_outlet;      // distance trailing edge outlet
-    double distance_emitter_inlet;         // distance circular emitter surface and inlet
-    double distance_emitter_up_bottom;     // distance circular emitter surface and up/bottom boundary
+    double distance_emitter_collector;     // distance circular emitter surface, airfoil collector surface [m]
+    double distance_collector_outlet;      // distance trailing edge outlet [m]
+    double distance_emitter_inlet;         // distance circular emitter surface and inlet [m]
+    double distance_emitter_up_bottom;     // distance circular emitter surface and up/bottom boundary [m]
 
 };
 
@@ -67,7 +64,9 @@ struct CYL {
 };
 
 struct GeometricalParameters {
-
+   
+   double emitter_center_X;               // X coordinate of the emitter center [m]
+   double emitter_center_Y;               // Y coordinate of the emitter center [m]
    NACA naca;
    WW ww;
    CYL cyl;
@@ -78,8 +77,8 @@ struct GeometricalParameters {
 
 struct SimulationSpecification {
    
-   std::string mesh_name;
-   std::string mesh_TAG;
+   std::string mesh_name;                // name of the file containing the mesh
+   std::string mesh_TAG;                 // type of the mesh
 
 };
 

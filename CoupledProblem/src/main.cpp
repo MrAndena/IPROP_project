@@ -12,11 +12,7 @@ int main(int argc, char** argv){
     
     data_struct my_data; //empty struct data
 
-    std::cout<<"   Reading JSON file inputs ...";
-
     reader(my_data); //all the processor know my_data, struct that contains all the user specification
-
-    std::cout<<"   Done !"<<std::endl;
 
 
 //#################### - Code for the simulation - ##########################################################################################
